@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, Animated, Image, Dimensions } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Animated,
+  Image,
+  Text,
+  ActivityIndicator,
+  Dimensions,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -94,15 +102,24 @@ function AppContent() {
   const { isOffline, isRestored, updateInfo, showUpdateModal, setShowUpdateModal } = useApp();
   const [appReady, setAppReady] = useState(false);
   const splashFadeAnim = useRef(new Animated.Value(1)).current;
+  const splashScaleAnim = useRef(new Animated.Value(0.92)).current;
 
   useEffect(() => {
+    // Elegant entrance scale
+    Animated.spring(splashScaleAnim, {
+      toValue: 1,
+      friction: 6,
+      useNativeDriver: true,
+    }).start();
+
+    // Fast transition: only 150ms before initiating smooth fade out
     const timer = setTimeout(() => {
       Animated.timing(splashFadeAnim, {
         toValue: 0,
-        duration: 450,
+        duration: 220,
         useNativeDriver: true,
       }).start(() => setAppReady(true));
-    }, 600);
+    }, 150);
 
     return () => clearTimeout(timer);
   }, []);
@@ -135,21 +152,33 @@ function AppContent() {
       {/* Global Realtime Internet Connectivity Banner */}
       <NetworkBanner isOffline={isOffline} isRestored={isRestored} />
 
-      {/* In-App GitHub Auto-Update Modal */}
+      {/* In-App GitHub Auto-Update Modal with Direct Downloader */}
       <UpdateModal
         visible={showUpdateModal}
         updateInfo={updateInfo}
         onClose={() => setShowUpdateModal(false)}
       />
 
-      {/* Branded Dark Splash Screen Overlay (Never white!) */}
+      {/* Branded Fast Splash Screen with Vibrant Logo (Instant, never pitch-black!) */}
       {!appReady && (
-        <Animated.View style={[styles.splashOverlay, { opacity: splashFadeAnim }]} pointerEvents="none">
-          <Image
-            source={require('./assets/splash.png')}
-            style={styles.splashImage}
-            resizeMode="contain"
-          />
+        <Animated.View
+          style={[styles.splashOverlay, { opacity: splashFadeAnim }]}
+          pointerEvents="none"
+        >
+          <Animated.View
+            style={[styles.splashCard, { transform: [{ scale: splashScaleAnim }] }]}
+          >
+            <Image
+              source={require('./assets/icon.png')}
+              style={styles.splashLogo}
+              resizeMode="cover"
+            />
+            <View style={styles.splashTextWrap}>
+              <Text style={styles.splashBrand}>FILMX</Text>
+              <Text style={styles.splashTagline}>Premyeralar va Seriallar</Text>
+            </View>
+            <ActivityIndicator size="small" color="#e50914" style={{ marginTop: 14 }} />
+          </Animated.View>
         </Animated.View>
       )}
     </View>
@@ -166,8 +195,6 @@ export default function App() {
   );
 }
 
-const { width, height } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
   rootContainer: {
     flex: 1,
@@ -180,8 +207,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 99999,
   },
-  splashImage: {
-    width: Math.min(width * 0.7, 280),
-    height: Math.min(width * 0.7, 280),
+  splashCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splashLogo: {
+    width: 110,
+    height: 110,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(229, 9, 20, 0.6)',
+    shadowColor: '#e50914',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  splashTextWrap: {
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  splashBrand: {
+    color: '#ffffff',
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  splashTagline: {
+    color: '#00f2fe',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+    letterSpacing: 0.5,
   },
 });
