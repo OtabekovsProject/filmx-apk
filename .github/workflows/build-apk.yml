@@ -62,17 +62,18 @@ jobs:
           name: "FilmX Android APK v1.4.0 — Tezkor Pleyer, Qorong'i Splash & Avto-Yangilanish"
           body: |
             ## 🎬 FilmX Mobile v1.4.0
-O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
+            O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
 
-### 🚀 v1.4.0 Yangiliklari:
-- ⚡ **Kinoni tezkor ochish**: Maxsus URL encoder va optimallashtirilgan ExoPlayer buferi orqali kinolar va seriallar kechikishlarsiz darhol o'ynatiladi.
-- 🎨 **Yangi Qorong'i Splash Screen**: Oq ekran chaqnashi butunlay yo'qotildi! Ilova to'q binafsha/qora (#070a12) fon va rasmiy FilmX logotipi bilan ochiladi.
-- 🔄 **Avtomatik Yangilanish (In-App GitHub Updates)**: Telefondagi ilovangiz GitHub-dagi yangi relizlarni avtomatik aniqlaydi va bir tugma bilan to'g'ridan-to'g'ri yangilaydi.
-- 📡 **Internet Holati Xabarnomasi**: Aloqa uzilganda va qayta tiklanganda tepadagi animatsiyali banner orqali xabar beradi.
-- 📺 **Kengaytirilgan Fullscreen Pleyer**: Ekran burish (landscape), nisbatlar (Cover/Contain/Stretch), ekranni qulflash.
+            ### 🚀 v1.4.0 Yangiliklari:
+            - ⚡ **Kinoni tezkor ochish**: Maxsus URL encoder va optimallashtirilgan ExoPlayer buferi orqali kinolar va seriallar kechikishlarsiz darhol o'ynatiladi.
+            - 🎨 **Yangi Qorong'i Splash Screen**: Oq ekran chaqnashi butunlay yo'qotildi! Ilova to'q binafsha/qora (#070a12) fon va rasmiy FilmX logotipi bilan ochiladi.
+            - 🔄 **Avtomatik Yangilanish (In-App GitHub Updates)**: Telefondagi ilovangiz GitHub-dagi yangi relizlarni avtomatik aniqlaydi va bir tugma bilan to'g'ridan-to'g'ri yangilaydi.
+            - 📡 **Internet Holati Xabarnomasi**: Aloqa uzilganda va qayta tiklanganda tepadagi animatsiyali banner orqali xabar beradi.
+            - 📺 **Kengaytirilgan Fullscreen Pleyer**: Ekran burish (landscape), nisbatlar (Cover/Contain/Stretch), ekranni qulflash.
+
             ### ✨ Qo'shimcha Imkoniyatlar:
             - ⚡ **60fps Yengil va Tezkor**: Silliq animatsiyalar va qotmasdan ishlash
-            - 🎬 **1,470+ Kino, Serial, Multfilm va Doramalar (5,000+ qism)
+            - 🎬 **1,470+ Kino, Serial, Multfilm va Doramalar (5,000+ qism)**
             - 📺 **To'liq Ekran (Fullscreen & Landscape)**: Gorizontal burish, Asl/To'liq/Cho'zilgan o'lchamlar, 10s ikki marta bosish, Ekran qulfi
             - 🔍 **Tuzatilgan & Kengaytirilgan Qidiruv**: So'nggi qidiruvlar tarixi, toifalar va jonli qidiruv
             - 🎬 **Zamonaviy Video Pleyer**: 10s oldinga/orqaga, tezlikni sozlash (0.75x - 2x), sifat, uyqu taymeri
