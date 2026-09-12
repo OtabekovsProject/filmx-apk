@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MediaItem, WatchHistoryItem } from '../types';
 import { checkAppUpdate, UpdateInfo } from '../services/updateService';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 interface AppContextType {
   favorites: MediaItem[];

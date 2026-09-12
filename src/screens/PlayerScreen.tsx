@@ -22,7 +22,42 @@ import { Series, Episode } from '../types';
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const SLEEP_TIMERS = [15, 30, 45, 60];
 
-const FAST_CDN_BACKUP = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+/**
+ * Optimizes and cleans video URL for Android ExoPlayer:
+ * 1. Directly routes https://fayllar1.ru/XX/ to https://XX.fayllar1.ru/XX/ (bypasses 301 redirect delay).
+ * 2. Safely encodes spaces (%20) and URL special characters without breaking path slashes.
+ */
+function optimizeVideoUrl(rawUrl?: string): string {
+  if (!rawUrl) return '';
+  let url = rawUrl.trim();
+
+  // Route directly to storage subdomain, avoiding 3-4s HTTP 301 redirect roundtrips
+  url = url.replace(/^https?:\/\/fayllar1\.ru\/(\d+)\//i, 'https://$1.fayllar1.ru/$1/');
+
+  try {
+    const parsed = new URL(url);
+    parsed.pathname = parsed.pathname
+      .split('/')
+      .map((part) => {
+        try {
+          return encodeURIComponent(decodeURIComponent(part))
+            .replace(/%28/g, '(')
+            .replace(/%29/g, ')')
+            .replace(/%27/g, "'");
+        } catch {
+          return encodeURIComponent(part);
+        }
+      })
+      .join('/');
+    return parsed.toString();
+  } catch {
+    try {
+      return encodeURI(decodeURI(url));
+    } catch {
+      return encodeURI(url);
+    }
+  }
+}
 
 export const PlayerScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -53,8 +88,8 @@ export const PlayerScreen: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isBuffering, setIsBuffering] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [useBackupStream, setUseBackupStream] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [positionMillis, setPositionMillis] = useState(0);
@@ -80,48 +115,29 @@ export const PlayerScreen: React.FC = () => {
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lockPromptTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Determine current video URL
   const rawVideoUrl = useMemo(() => {
-    if (useBackupStream) {
-      return FAST_CDN_BACKUP;
-    }
     if (isSeries && currentEpisode?.videoUrl) {
       return currentEpisode.videoUrl;
     }
     if (item && 'videoUrl' in item && item.videoUrl) {
       return item.videoUrl;
     }
-    return FAST_CDN_BACKUP;
-  }, [item, isSeries, currentEpisode, useBackupStream]);
+    return '';
+  }, [item, isSeries, currentEpisode]);
 
-  // Sanitize URL so Android ExoPlayer handles spaces and special characters instantly without stalling
+  // Clean, high-performance optimized URL for Android ExoPlayer
   const videoUrl = useMemo(() => {
-    if (!rawVideoUrl) return FAST_CDN_BACKUP;
-    try {
-      return encodeURI(decodeURI(rawVideoUrl));
-    } catch {
-      return encodeURI(rawVideoUrl);
-    }
+    return optimizeVideoUrl(rawVideoUrl);
   }, [rawVideoUrl]);
 
-  // Auto-detect slow stream if not loaded after 9 seconds
+  // Reset states when URL or retryKey changes
   useEffect(() => {
     setIsBuffering(true);
-    setLoadError(false);
-    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-
-    loadTimeoutRef.current = setTimeout(() => {
-      if (!hasLoaded && positionMillis === 0) {
-        setLoadError(true);
-      }
-    }, 9000);
-
-    return () => {
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-    };
-  }, [videoUrl, hasLoaded]);
+    setPlaybackError(null);
+    setHasLoaded(false);
+  }, [videoUrl, retryKey]);
 
   // Clean up orientation when leaving Player
   useEffect(() => {
@@ -129,7 +145,6 @@ export const PlayerScreen: React.FC = () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       if (lockPromptTimeoutRef.current) clearTimeout(lockPromptTimeoutRef.current);
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     };
   }, []);
 
@@ -220,12 +235,14 @@ export const PlayerScreen: React.FC = () => {
     if (!status.isLoaded) {
       if (status.error) {
         console.warn('Playback status error:', status.error);
-        setLoadError(true);
+        setPlaybackError(status.error);
+        setIsBuffering(false);
       }
       return;
     }
 
     setHasLoaded(true);
+    setPlaybackError(null);
     setIsBuffering(status.isBuffering);
     setIsPlaying(status.isPlaying);
     setPositionMillis(status.positionMillis);
@@ -288,11 +305,11 @@ export const PlayerScreen: React.FC = () => {
     }
   };
 
-  const switchServer = () => {
-    setLoadError(false);
+  const handleRetry = () => {
+    setPlaybackError(null);
     setIsBuffering(true);
-    setUseBackupStream(true);
-    showToastMessage("Zaxira tezkor serverga ulandi");
+    setRetryKey((prev) => prev + 1);
+    showToastMessage('Qayta ulanmoqda...');
   };
 
   // Handle double-tap skip vs single-tap toggle
@@ -374,57 +391,73 @@ export const PlayerScreen: React.FC = () => {
         onPress={handleTouchScreen}
       >
         <Video
+          key={`video-${retryKey}-${videoUrl}`}
           ref={videoRef}
-          source={{
-            uri: videoUrl,
-            headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) FilmX-Mobile/1.4' },
-          }}
+          source={{ uri: videoUrl }}
           style={styles.video}
           resizeMode={resizeMode}
           shouldPlay={true}
           usePoster={true}
           posterSource={{ uri: item.backdrop || item.poster }}
           posterStyle={{ resizeMode: 'cover' }}
-          progressUpdateIntervalMillis={250}
+          progressUpdateIntervalMillis={500}
           rate={playbackSpeed}
           onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-          onLoadStart={() => setIsBuffering(true)}
+          onLoadStart={() => {
+            setIsBuffering(true);
+            setPlaybackError(null);
+          }}
           onLoad={() => {
             setIsBuffering(false);
             setHasLoaded(true);
+            setPlaybackError(null);
           }}
-          onError={() => setLoadError(true)}
+          onError={(err) => {
+            console.warn('Video load error:', err);
+            setPlaybackError('Video oqimini yuklab bo‘lmadi');
+            setIsBuffering(false);
+          }}
         />
       </TouchableOpacity>
 
       {/* Instant Buffering & Loading Neon Spinner */}
-      {isBuffering && (
+      {isBuffering && !playbackError && (
         <View style={styles.bufferingOverlay} pointerEvents="none">
           <View style={styles.bufferingCard}>
             <ActivityIndicator size="large" color="#e50914" />
             <Text style={styles.bufferingText}>Kino tezkor yuklanmoqda...</Text>
-            <Text style={styles.bufferingSubText}>1080p Full HD • Tas-IX</Text>
+            <Text style={styles.bufferingSubText}>1080p Full HD • Tezkor Tas-IX</Text>
           </View>
         </View>
       )}
 
-      {/* Server Fallback Modal if Stream is Unresponsive */}
-      {loadError && (
+      {/* Real Error Recovery Card (Only shown if playback actually fails) */}
+      {playbackError && (
         <View style={styles.errorOverlay} pointerEvents="box-none">
           <View style={styles.errorCard}>
-            <Ionicons name="warning-outline" size={38} color="#ffb703" />
-            <Text style={styles.errorTitle}>Asosiy server sekin ishlamoqda</Text>
+            <Ionicons name="alert-circle-outline" size={44} color="#e50914" />
+            <Text style={styles.errorTitle}>Videoni yuklashda uzilish</Text>
             <Text style={styles.errorDesc}>
-              Kino tez va qotmasdan ochilishi uchun zaxira tezkor serverga o'tishingiz mumkin.
+              Internet aloqasi yoki video serverida vaqtinchalik javob kechikishi yuz berdi.
             </Text>
-            <TouchableOpacity
-              style={styles.switchServerBtn}
-              onPress={switchServer}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="flash" size={18} color="#fff" />
-              <Text style={styles.switchServerBtnText}>Tezkor Serverga O'tish</Text>
-            </TouchableOpacity>
+            <View style={styles.errorButtonsRow}>
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={handleRetry}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="refresh" size={18} color="#fff" />
+                <Text style={styles.retryBtnText}>Qayta Urinish</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={handleGoBack}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="arrow-back" size={18} color="#cbd5e1" />
+                <Text style={styles.backBtnText}>Orqaga</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -457,42 +490,179 @@ export const PlayerScreen: React.FC = () => {
         </Animated.View>
       )}
 
-      {/* Resize Mode Toast Notification */}
-      {resizeToast && (
-        <View style={styles.toastContainer} pointerEvents="none">
-          <View style={styles.toastCard}>
-            <Ionicons name="resize-outline" size={16} color="#00f2fe" />
-            <Text style={styles.toastText}>{resizeToast}</Text>
-          </View>
-        </View>
-      )}
-
-      {/* Locked Screen Overlay (When screen lock is enabled) */}
+      {/* Screen Lock Overlay Prompter */}
       {isLocked && showLockPrompt && (
-        <View style={styles.lockPromptOverlay} pointerEvents="box-none">
+        <View style={styles.lockOverlay} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.unlockBtn}
             onPress={() => {
               setIsLocked(false);
-              setShowLockPrompt(false);
-              triggerControls();
+              showToastMessage('Ekran qulfdan chiqarildi');
             }}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Ionicons name="lock-closed" size={24} color="#e50914" />
-            <Text style={styles.unlockBtnText}>Ekranni ochish</Text>
+            <Ionicons name="lock-open" size={24} color="#fff" />
+            <Text style={styles.unlockText}>Qulfdan chiqarish</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Aspect Ratio / Action Toast */}
+      {resizeToast && (
+        <View style={styles.toastContainer} pointerEvents="none">
+          <Text style={styles.toastText}>{resizeToast}</Text>
+        </View>
+      )}
+
+      {/* Full Player HUD Controls Overlay */}
+      {showControls && !isLocked && (
+        <View style={styles.hudOverlay} pointerEvents="box-none">
+          {/* Top Bar */}
+          <View style={styles.topHud}>
+            <TouchableOpacity style={styles.hudCircleBtn} onPress={handleGoBack}>
+              <Ionicons name="arrow-back" size={24} color="#ffffff" />
+            </TouchableOpacity>
+
+            <View style={styles.hudTitleWrap}>
+              <Text style={styles.hudTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+              {isSeries && currentEpisode && (
+                <Text style={styles.hudSubTitle} numberOfLines={1}>
+                  {currentEpisode.title || `Qism ${currentEpisode.episodeNumber}`}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.topActions}>
+              <TouchableOpacity
+                style={styles.pillActionBtn}
+                onPress={() => {
+                  setIsLocked(true);
+                  showToastMessage('Ekran qulflandi');
+                }}
+              >
+                <Ionicons name="lock-closed" size={16} color="#00f2fe" />
+                <Text style={styles.pillActionText}>Qulf</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.pillActionBtn} onPress={cycleResizeMode}>
+                <Ionicons name="scan-outline" size={16} color="#00f2fe" />
+                <Text style={styles.pillActionText}>O'lcham</Text>
+              </TouchableOpacity>
+
+              {isSeries && (
+                <TouchableOpacity
+                  style={styles.episodesToggle}
+                  onPress={() => setShowEpisodesModal(true)}
+                >
+                  <Ionicons name="list" size={18} color="#fff" />
+                  <Text style={styles.episodesToggleText}>Qismlar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Center Play/Pause & Fast-Forward / Rewind Controls */}
+          <View style={styles.centerHud} pointerEvents="box-none">
+            <TouchableOpacity style={styles.skipBtn} onPress={() => skipTime(-10)}>
+              <Ionicons name="play-back" size={26} color="#ffffff" />
+              <Text style={styles.skipLabel}>10s</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.playPauseBtn} onPress={togglePlayPause}>
+              <Ionicons
+                name={isPlaying ? 'pause' : 'play'}
+                size={36}
+                color="#ffffff"
+                style={!isPlaying ? { marginLeft: 3 } : undefined}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.skipBtn} onPress={() => skipTime(10)}>
+              <Ionicons name="play-forward" size={26} color="#ffffff" />
+              <Text style={styles.skipLabel}>10s</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Bottom Controls: Scrubber & Tools */}
+          <View style={styles.bottomHud}>
+            {/* Scrubber Time Bar */}
+            <View style={styles.scrubberRow}>
+              <Text style={styles.timeText}>{formatTime(positionMillis)}</Text>
+              <TouchableOpacity
+                style={styles.progressTrackWrap}
+                activeOpacity={1}
+                onPress={handleSeek}
+              >
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFilled, { width: `${progressPercent}%` }]} />
+                  <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.timeText}>{formatTime(durationMillis)}</Text>
+            </View>
+
+            {/* Bottom Actions Row */}
+            <View style={styles.toolsRow}>
+              <View style={styles.toolsLeft}>
+                <TouchableOpacity
+                  style={styles.toolBtn}
+                  onPress={() => setShowSpeedModal(true)}
+                >
+                  <Ionicons name="speedometer-outline" size={16} color="#cbd5e1" />
+                  <Text style={styles.toolBtnText}>{playbackSpeed}x</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.toolBtn, sleepTimer !== null && styles.activeToolBtn]}
+                  onPress={() => setShowTimerModal(true)}
+                >
+                  <Ionicons
+                    name="moon-outline"
+                    size={16}
+                    color={sleepTimer !== null ? '#070a12' : '#cbd5e1'}
+                  />
+                  <Text style={[styles.toolBtnText, sleepTimer !== null && styles.activeToolBtnText]}>
+                    {sleepTimer ? `${sleepTimer}m` : 'Taymer'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.toolBtn} onPress={handleRetry}>
+                  <Ionicons name="refresh" size={15} color="#00f2fe" />
+                  <Text style={[styles.toolBtnText, { color: '#00f2fe' }]}>Yangilash</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.toolsRight}>
+                <TouchableOpacity
+                  style={styles.fullscreenBtn}
+                  onPress={toggleFullscreen}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={isFullscreen ? 'contract' : 'expand'}
+                    size={20}
+                    color="#ffffff"
+                  />
+                  <Text style={styles.fullscreenBtnText}>
+                    {isFullscreen ? 'Kichraytirish' : "To'liq Ekran"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </View>
       )}
 
       {/* Next Episode Countdown Overlay */}
       {countdown !== null && (
         <View style={styles.nextOverlay}>
-          <Text style={styles.nextLabel}>KEYINGI QISM BOSHLANMOQDA:</Text>
+          <Text style={styles.nextLabel}>KEYINGI QISM</Text>
           <Text style={styles.nextCount}>{countdown}</Text>
           <View style={styles.nextBtnRow}>
             <TouchableOpacity style={styles.nextBtn} onPress={handleNextEpisode}>
-              <Text style={styles.nextBtnText}>Hozir o'tish</Text>
+              <Text style={styles.nextBtnText}>Hozir boshlash</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setCountdown(null)}>
               <Text style={styles.cancelBtnText}>Bekor qilish</Text>
@@ -501,188 +671,8 @@ export const PlayerScreen: React.FC = () => {
         </View>
       )}
 
-      {/* On-Screen Controls HUD */}
-      {!isLocked && showControls && (
-        <View style={styles.controlsHud} pointerEvents="box-none">
-          {/* Top Bar */}
-          <View style={styles.topHud}>
-            <TouchableOpacity
-              style={styles.hudIconBtn}
-              onPress={handleGoBack}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="arrow-back" size={22} color="#fff" />
-            </TouchableOpacity>
-
-            <View style={styles.topTitles}>
-              <Text style={styles.hudTitle} numberOfLines={1}>
-                {item.title}
-              </Text>
-              {currentEpisode && (
-                <Text style={styles.hudSubTitle} numberOfLines={1}>
-                  {currentEpisode.title}
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.topActions}>
-              <TouchableOpacity
-                style={styles.pillActionBtn}
-                onPress={cycleResizeMode}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="resize-outline" size={14} color="#00f2fe" />
-                <Text style={styles.pillActionText}>
-                  {resizeMode === ResizeMode.CONTAIN
-                    ? '16:9'
-                    : resizeMode === ResizeMode.COVER
-                    ? "To'liq"
-                    : "Cho'zilgan"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.hudIconBtnSmall}
-                onPress={() => {
-                  setIsLocked(true);
-                  setShowControls(false);
-                  setShowLockPrompt(true);
-                  setTimeout(() => setShowLockPrompt(false), 2500);
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="lock-open-outline" size={18} color="#fff" />
-              </TouchableOpacity>
-
-              {isSeries && (
-                <TouchableOpacity
-                  style={styles.episodesToggle}
-                  onPress={() => setShowEpisodesModal(true)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="list" size={16} color="#fff" />
-                  <Text style={styles.episodesToggleText}>Qismlar</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* Center Playback Controls */}
-          <View style={styles.centerHud} pointerEvents="box-none">
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={() => skipTime(-10)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="refresh" size={26} color="#fff" style={{ transform: [{ scaleX: -1 }] }} />
-              <Text style={styles.skipLabel}>-10s</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.playPauseBtn}
-              onPress={togglePlayPause}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name={isPlaying ? 'pause' : 'play'}
-                size={34}
-                color="#fff"
-                style={{ marginLeft: isPlaying ? 0 : 3 }}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={() => skipTime(10)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="refresh" size={26} color="#fff" />
-              <Text style={styles.skipLabel}>+10s</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Bottom HUD: Scrubber, Timers, Speeds, Fullscreen */}
-          <View style={styles.bottomHud} pointerEvents="box-none">
-            {/* Scrubber Progress Bar */}
-            <View style={styles.scrubberRow}>
-              <Text style={styles.timeText}>{formatTime(positionMillis)}</Text>
-              <TouchableOpacity
-                style={styles.progressTrackWrap}
-                onPress={handleSeek}
-                activeOpacity={1}
-              >
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFilled, { width: `${progressPercent}%` }]} />
-                  <View style={[styles.progressThumb, { left: `${Math.max(0, Math.min(98, progressPercent))}%` }]} />
-                </View>
-              </TouchableOpacity>
-              <Text style={styles.timeText}>{formatTime(durationMillis)}</Text>
-            </View>
-
-            {/* Bottom Actions Row */}
-            <View style={styles.toolsRow} pointerEvents="box-none">
-              <View style={styles.toolsLeft}>
-                {/* Speed Selector Button */}
-                <TouchableOpacity
-                  style={styles.toolBtn}
-                  onPress={() => setShowSpeedModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="speedometer-outline" size={16} color="#cbd5e1" />
-                  <Text style={styles.toolBtnText}>{playbackSpeed}x</Text>
-                </TouchableOpacity>
-
-                {/* Sleep Timer Button */}
-                <TouchableOpacity
-                  style={[styles.toolBtn, sleepTimer !== null && styles.activeToolBtn]}
-                  onPress={() => setShowTimerModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="timer-outline"
-                    size={16}
-                    color={sleepTimer !== null ? '#fff' : '#cbd5e1'}
-                  />
-                  <Text style={[styles.toolBtnText, sleepTimer !== null && styles.activeToolBtnText]}>
-                    {sleepTimer !== null ? `${sleepTimer} daq` : 'Taymer'}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.qualityBadge}>
-                  <Text style={styles.qualityBadgeText}>1080p FHD</Text>
-                </View>
-              </View>
-
-              <View style={styles.toolsRight}>
-                {/* Dedicated Fullscreen / Landscape Switcher Button */}
-                <TouchableOpacity
-                  style={styles.fullscreenBtn}
-                  onPress={toggleFullscreen}
-                  activeOpacity={0.75}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons
-                    name={isFullscreen ? 'contract' : 'scan'}
-                    size={20}
-                    color="#ffffff"
-                  />
-                  <Text style={styles.fullscreenBtnText}>
-                    {isFullscreen ? 'Kichraytirish' : "To'liq ekran"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Speed Selector Modal */}
-      <Modal
-        visible={showSpeedModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowSpeedModal(false)}
-      >
+      {/* Speed Modal */}
+      <Modal visible={showSpeedModal} transparent animationType="fade">
         <TouchableOpacity
           style={styles.modalBackdrop}
           activeOpacity={1}
@@ -697,7 +687,12 @@ export const PlayerScreen: React.FC = () => {
                   style={[styles.speedOption, playbackSpeed === spd && styles.activeSpeedOption]}
                   onPress={() => handleSpeedChange(spd)}
                 >
-                  <Text style={[styles.speedOptionText, playbackSpeed === spd && styles.activeSpeedOptionText]}>
+                  <Text
+                    style={[
+                      styles.speedOptionText,
+                      playbackSpeed === spd && styles.activeSpeedOptionText,
+                    ]}
+                  >
                     {spd}x
                   </Text>
                 </TouchableOpacity>
@@ -708,19 +703,14 @@ export const PlayerScreen: React.FC = () => {
       </Modal>
 
       {/* Sleep Timer Modal */}
-      <Modal
-        visible={showTimerModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowTimerModal(false)}
-      >
+      <Modal visible={showTimerModal} transparent animationType="fade">
         <TouchableOpacity
           style={styles.modalBackdrop}
           activeOpacity={1}
           onPress={() => setShowTimerModal(false)}
         >
           <View style={styles.compactModalContent}>
-            <Text style={styles.modalSheetTitle}>Avto-O'chirish Taymeri</Text>
+            <Text style={styles.modalSheetTitle}>Uyqu Taymeri</Text>
             <View style={styles.timerOptionsRow}>
               {SLEEP_TIMERS.map((min) => (
                 <TouchableOpacity
@@ -729,10 +719,15 @@ export const PlayerScreen: React.FC = () => {
                   onPress={() => {
                     setSleepTimer(min);
                     setShowTimerModal(false);
-                    showToastMessage(`Taymer: ${min} daqiqaga qo'yildi`);
+                    showToastMessage(`Taymer: ${min} daqiqa`);
                   }}
                 >
-                  <Text style={[styles.timerOptionText, sleepTimer === min && styles.activeTimerOptionText]}>
+                  <Text
+                    style={[
+                      styles.timerOptionText,
+                      sleepTimer === min && styles.activeTimerOptionText,
+                    ]}
+                  >
                     {min} daq
                   </Text>
                 </TouchableOpacity>
@@ -744,61 +739,61 @@ export const PlayerScreen: React.FC = () => {
                 onPress={() => {
                   setSleepTimer(null);
                   setShowTimerModal(false);
-                  showToastMessage("Taymer bekor qilindi");
+                  showToastMessage('Taymer o‘chirildi');
                 }}
               >
-                <Text style={styles.clearTimerText}>Taymerni o'chirish</Text>
+                <Text style={styles.clearTimerText}>Taymerni o‘chirish</Text>
               </TouchableOpacity>
             )}
           </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* Series Episodes Drawer Modal */}
+      {/* Series Episodes Selection Modal */}
       {seriesItem && (
-        <Modal
-          visible={showEpisodesModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowEpisodesModal(false)}
-        >
-          <View style={styles.modalBackdrop}>
+        <Modal visible={showEpisodesModal} transparent animationType="slide">
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowEpisodesModal(false)}
+          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Qismlar ro'yxati</Text>
+                <Text style={styles.modalTitle}>Qismlar ro‘yxati</Text>
                 <TouchableOpacity onPress={() => setShowEpisodesModal(false)}>
-                  <Ionicons name="close" size={24} color="#fff" />
+                  <Ionicons name="close" size={24} color="#cbd5e1" />
                 </TouchableOpacity>
               </View>
 
               <ScrollView style={styles.modalScroll}>
                 {seriesItem.seasons.map((season, sIdx) => (
                   <View key={sIdx} style={styles.seasonSection}>
-                    <Text style={styles.seasonLabel}>{season.seasonTitle}</Text>
+                    <Text style={styles.seasonLabel}>{season.seasonTitle || `${sIdx + 1}-Mavsum`}</Text>
                     {season.episodes.map((ep) => {
-                      const isActive = ep.id === currentEpisode?.id;
+                      const isActive = currentEpisode?.id === ep.id;
                       return (
                         <TouchableOpacity
                           key={ep.id}
                           style={[styles.modalEpCard, isActive && styles.activeModalEpCard]}
                           onPress={() => {
                             setCurrentEpisode(ep);
-                            setHasLoaded(false);
                             setShowEpisodesModal(false);
                           }}
                         >
                           <Ionicons
-                            name={isActive ? 'play' : 'videocam-outline'}
-                            size={16}
-                            color={isActive ? '#fff' : '#94a3b8'}
+                            name={isActive ? 'play' : 'play-outline'}
+                            size={18}
+                            color={isActive ? '#e50914' : '#cbd5e1'}
                           />
                           <Text
                             style={[styles.modalEpText, isActive && styles.activeModalEpText]}
                             numberOfLines={1}
                           >
-                            {ep.title}
+                            {ep.title || `${ep.episodeNumber}-Qism`}
                           </Text>
-                          <Text style={styles.modalEpDuration}>{ep.duration || '45 daq'}</Text>
+                          {ep.duration && (
+                            <Text style={styles.modalEpDuration}>{ep.duration}</Text>
+                          )}
                         </TouchableOpacity>
                       );
                     })}
@@ -806,7 +801,7 @@ export const PlayerScreen: React.FC = () => {
                 ))}
               </ScrollView>
             </View>
-          </View>
+          </TouchableOpacity>
         </Modal>
       )}
     </View>
@@ -816,194 +811,205 @@ export const PlayerScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
-    position: 'relative',
+    backgroundColor: '#000000',
+    justifyContent: 'center',
   },
   videoTouch: {
-    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   video: {
-    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   bufferingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 20,
   },
   bufferingCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(7, 10, 18, 0.85)',
+    backgroundColor: 'rgba(7, 10, 18, 0.82)',
     paddingHorizontal: 22,
-    paddingVertical: 18,
+    paddingVertical: 16,
     borderRadius: 16,
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(229, 9, 20, 0.4)',
+    borderColor: 'rgba(229, 9, 20, 0.3)',
+    gap: 8,
   },
   bufferingText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '800',
-    marginTop: 10,
+    fontWeight: '700',
   },
   bufferingSubText: {
     color: '#00f2fe',
     fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
+    fontWeight: '800',
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7, 10, 18, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(7, 10, 18, 0.92)',
+    zIndex: 40,
     padding: 24,
-    zIndex: 45,
   },
   errorCard: {
-    alignItems: 'center',
     backgroundColor: '#0f1422',
+    borderRadius: 18,
     padding: 24,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#e50914',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(229, 9, 20, 0.4)',
     maxWidth: 360,
+    width: '100%',
   },
   errorTitle: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
     marginTop: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
   errorDesc: {
     color: '#94a3b8',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 16,
     lineHeight: 18,
+    marginBottom: 20,
   },
-  switchServerBtn: {
+  errorButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  retryBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: '#e50914',
-    paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 10,
   },
-  switchServerBtnText: {
+  retryBtnText: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '800',
   },
-  doubleTapOverlay: {
-    position: 'absolute',
-    top: '35%',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  backBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    gap: 6,
+    backgroundColor: '#1e293b',
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  backBtnText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  doubleTapOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '40%',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 35,
   },
   doubleTapLeft: {
-    left: '15%',
+    left: 0,
+    backgroundColor: 'rgba(0, 242, 254, 0.15)',
+    borderTopRightRadius: 100,
+    borderBottomRightRadius: 100,
   },
   doubleTapRight: {
-    right: '15%',
+    right: 0,
+    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    borderTopLeftRadius: 100,
+    borderBottomLeftRadius: 100,
   },
   doubleTapText: {
-    color: '#fff',
+    color: '#ffffff',
     fontSize: 13,
     fontWeight: '800',
     marginTop: 6,
   },
-  toastContainer: {
+  lockOverlay: {
     position: 'absolute',
-    top: 60,
-    alignSelf: 'center',
-    zIndex: 50,
-  },
-  toastCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(7, 10, 18, 0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 242, 254, 0.4)',
-  },
-  toastText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  lockPromptOverlay: {
-    position: 'absolute',
-    top: 30,
-    right: 30,
+    top: 24,
+    right: 24,
     zIndex: 60,
   },
   unlockBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(7, 10, 18, 0.9)',
+    backgroundColor: 'rgba(229, 9, 20, 0.9)',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: '#e50914',
+    shadowColor: '#e50914',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  unlockBtnText: {
+  unlockText: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '800',
   },
-  controlsHud: {
+  toastContainer: {
+    position: 'absolute',
+    top: 24,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(7, 10, 18, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 242, 254, 0.4)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 70,
+  },
+  toastText: {
+    color: '#00f2fe',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  hudOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.48)',
+    backgroundColor: 'rgba(7, 10, 18, 0.5)',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    padding: 16,
+    zIndex: 30,
   },
   topHud: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 6,
+    gap: 12,
   },
-  hudIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(7, 10, 18, 0.85)',
+  hudCircleBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(7, 10, 18, 0.75)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  hudIconBtnSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(7, 10, 18, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  topTitles: {
+  hudTitleWrap: {
     flex: 1,
-    marginHorizontal: 12,
   },
   hudTitle: {
     color: '#ffffff',
@@ -1164,19 +1170,6 @@ const styles = StyleSheet.create({
   activeToolBtnText: {
     color: '#070a12',
     fontWeight: '900',
-  },
-  qualityBadge: {
-    backgroundColor: 'rgba(0, 242, 254, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 242, 254, 0.3)',
-  },
-  qualityBadgeText: {
-    color: '#00f2fe',
-    fontSize: 10,
-    fontWeight: '800',
   },
   fullscreenBtn: {
     flexDirection: 'row',

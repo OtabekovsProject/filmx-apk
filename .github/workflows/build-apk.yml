@@ -58,13 +58,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
         with:
-          tag_name: v1.4.0
-          name: "FilmX Android APK v1.4.0 — Tezkor Pleyer, Qorong'i Splash & Avto-Yangilanish"
+          tag_name: v1.4.1
+          name: "FilmX Android APK v1.4.1 — Tezkor Pleyer, Qorong'i Splash & Avto-Yangilanish"
           body: |
-            ## 🎬 FilmX Mobile v1.4.0
+            ## 🎬 FilmX Mobile v1.4.1
             O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
 
-            ### 🚀 v1.4.0 Yangiliklari:
+            ### 🚀 v1.4.1 Yangiliklari:
             - ⚡ **Kinoni tezkor ochish**: Maxsus URL encoder va optimallashtirilgan ExoPlayer buferi orqali kinolar va seriallar kechikishlarsiz darhol o'ynatiladi.
             - 🎨 **Yangi Qorong'i Splash Screen**: Oq ekran chaqnashi butunlay yo'qotildi! Ilova to'q binafsha/qora (#070a12) fon va rasmiy FilmX logotipi bilan ochiladi.
             - 🔄 **Avtomatik Yangilanish (In-App GitHub Updates)**: Telefondagi ilovangiz GitHub-dagi yangi relizlarni avtomatik aniqlaydi va bir tugma bilan to'g'ridan-to'g'ri yangilaydi.
