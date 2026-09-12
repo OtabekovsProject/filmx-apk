@@ -102,6 +102,7 @@ export default function App() {
             }}
           >
             <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="Search" component={SearchScreen} />
             <Stack.Screen name="Detail" component={DetailScreen} />
             <Stack.Screen
               name="Player"
