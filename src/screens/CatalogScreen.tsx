@@ -85,7 +85,7 @@ export const CatalogScreen: React.FC = () => {
     <View style={styles.headerArea}>
       <Text style={styles.pageTitle}>FilmX Katalogi</Text>
       <Text style={styles.pageSubtitle}>
-        918+ kinolar va seriallar • 1080p Full HD
+        1,180+ kinolar, seriallar va multfilmlar • 1080p Full HD
       </Text>
 
       {/* Search Input */}

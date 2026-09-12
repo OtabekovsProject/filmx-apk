@@ -7,19 +7,27 @@ import { Header } from '../components/Header';
 import { HeroSlider } from '../components/HeroSlider';
 import { ContinueWatching } from '../components/ContinueWatching';
 import { MediaCard } from '../components/MediaCard';
-import { getMovies, getSeries, getFeaturedMedia } from '../services/dataService';
+import { 
+  getMovies, 
+  getSeries, 
+  getFeaturedMedia, 
+  getMultfilms, 
+  getDoramas, 
+  getLatestPremieres 
+} from '../services/dataService';
 
 const QUICK_CATEGORIES = [
   { name: '🔥 Seriallar', type: 'series' },
+  { name: '🐱‍🏍 Multfilmlar', genre: 'multfilm' },
+  { name: '🎭 Dorama', genre: 'dorama' },
+  { name: '⚡ 2025-2026', year: '2025' },
   { name: '🎬 Kinolar', type: 'movie' },
   { name: '💥 Jangari', genre: 'jangari' },
-  { name: '🌟 Hind', genre: 'hind' },
-  { name: '⚡ AQSH', genre: 'aqsh' },
-  { name: '🥋 Koreya', genre: 'koreya' },
-  { name: '🎭 Drama', genre: 'drama' },
-  { name: '🔪 Triller', genre: 'triller' },
-  { name: '😂 Komediya', genre: 'komediya' },
   { name: '🚀 Fantastika', genre: 'fantastika' },
+  { name: '😂 Komediya', genre: 'komediya' },
+  { name: '🔪 Triller', genre: 'triller' },
+  { name: '🌟 Hind', genre: 'hind' },
+  { name: '🥋 Koreya', genre: 'koreya' },
 ];
 
 export const HomeScreen: React.FC = () => {
@@ -27,12 +35,18 @@ export const HomeScreen: React.FC = () => {
   const movies = useMemo(() => getMovies(), []);
   const series = useMemo(() => getSeries(), []);
   const featured = useMemo(() => getFeaturedMedia(), []);
+  const multfilms = useMemo(() => getMultfilms(), []);
+  const doramas = useMemo(() => getDoramas(), []);
+  const latestPremieres = useMemo(() => getLatestPremieres(), []);
 
   const trendingSeries = series.slice(0, 10);
   const latestMovies = movies.slice(0, 12);
   const topRated = [...movies, ...series]
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
     .slice(0, 10);
+  const topMultfilms = multfilms.slice(0, 10);
+  const topDoramas = doramas.slice(0, 10);
+  const topPremieres = latestPremieres.slice(0, 10);
   const hindMovies = movies.filter(m => m.country?.toLowerCase().includes('hind') || m.genres?.some(g => g.toLowerCase().includes('hind'))).slice(0, 8);
   const thrillers = [...movies, ...series].filter(m => m.genres?.some(g => g.toLowerCase().includes('triller'))).slice(0, 8);
 
@@ -57,6 +71,8 @@ export const HomeScreen: React.FC = () => {
                   navigation.navigate('CatalogTab', { screen: 'Catalog', params: { type: cat.type } });
                 } else if (cat.genre) {
                   navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: cat.genre } });
+                } else if ((cat as any).year) {
+                  navigation.navigate('CatalogTab', { screen: 'Catalog', params: { year: (cat as any).year } });
                 }
               }}
               activeOpacity={0.75}
@@ -77,7 +93,7 @@ export const HomeScreen: React.FC = () => {
               onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { type: 'series' } })}
               style={styles.moreBtn}
             >
-              <Text style={styles.moreText}>Barchasi</Text>
+              <Text style={styles.moreText}>Barchasi ({series.length})</Text>
               <Ionicons name="chevron-forward" size={14} color="#e50914" />
             </TouchableOpacity>
           </View>
@@ -88,7 +104,79 @@ export const HomeScreen: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* Section 2: So'nggi Premyera Kinolar */}
+        {/* Section 2: Multfilmlar & Animatsiya */}
+        {topMultfilms.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleWrap}>
+                <View style={[styles.indicator, { backgroundColor: '#f59e0b' }]} />
+                <Text style={styles.sectionTitle}>🐱‍🏍 Multfilmlar & Animatsiya</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'multfilm' } })}
+                style={styles.moreBtn}
+              >
+                <Text style={styles.moreText}>Barchasi ({multfilms.length})</Text>
+                <Ionicons name="chevron-forward" size={14} color="#e50914" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
+              {topMultfilms.map((item) => (
+                <MediaCard key={item.id} item={item} variant="carousel" />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Section 3: Doramalar & Sharq Seriallari */}
+        {topDoramas.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleWrap}>
+                <View style={[styles.indicator, { backgroundColor: '#ec4899' }]} />
+                <Text style={styles.sectionTitle}>🎭 Dorama & Sharq Seriallari</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'dorama' } })}
+                style={styles.moreBtn}
+              >
+                <Text style={styles.moreText}>Barchasi ({doramas.length})</Text>
+                <Ionicons name="chevron-forward" size={14} color="#e50914" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
+              {topDoramas.map((item) => (
+                <MediaCard key={item.id} item={item} variant="carousel" />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Section 4: 2024-2026 Premyeralar */}
+        {topPremieres.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleWrap}>
+                <View style={[styles.indicator, { backgroundColor: '#10b981' }]} />
+                <Text style={styles.sectionTitle}>⚡ 2024-2026 Yangi Premyeralar</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { year: '2025' } })}
+                style={styles.moreBtn}
+              >
+                <Text style={styles.moreText}>Barchasi ({latestPremieres.length})</Text>
+                <Ionicons name="chevron-forward" size={14} color="#e50914" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
+              {topPremieres.map((item) => (
+                <MediaCard key={item.id} item={item} variant="carousel" />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Section 5: So'nggi Premyera Kinolar */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
@@ -110,7 +198,7 @@ export const HomeScreen: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* Section 3: Eng Yuqori Baholanganlar */}
+        {/* Section 6: Eng Yuqori Baholanganlar */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
@@ -132,7 +220,7 @@ export const HomeScreen: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* Section 4: Hind Kinolari */}
+        {/* Section 7: Hind Kinolari */}
         {hindMovies.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -156,7 +244,7 @@ export const HomeScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Section 5: Thrillers */}
+        {/* Section 8: Thrillers */}
         {thrillers.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -183,13 +271,13 @@ export const HomeScreen: React.FC = () => {
         {/* Presentation Banner */}
         <View style={styles.banner}>
           <View style={styles.bannerBadge}>
-            <Text style={styles.bannerBadgeText}>843 KINO · 75 SERIAL · 1080P FHD</Text>
+            <Text style={styles.bannerBadgeText}>1,050+ KINO · 130+ SERIAL · 2,000+ QISM · 1080P FHD</Text>
           </View>
           <Text style={styles.bannerTitle}>
-            FilmX — O'zbek tilidagi kinolar va seriallar olami
+            FilmX — O'zbek tilidagi kinolar, seriallar va multfilmlar olami
           </Text>
           <Text style={styles.bannerDesc}>
-            Reklamasiz, yuqori Tas-ix tezlikda barcha premyeralarni bepul tomosha qiling.
+            Reklamasiz, yuqori Tas-ix tezlikda multfilmlar, seriallar, doramalar va barcha yangi premyeralarni tomosha qiling.
           </Text>
         </View>
 

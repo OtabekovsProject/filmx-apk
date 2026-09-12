@@ -62,6 +62,30 @@ export function getFeaturedMedia(): MediaItem[] {
   return cachedAll.filter((item) => (item.rating || 0) >= 8.5).slice(0, 10);
 }
 
+export function getMultfilms(): MediaItem[] {
+  initData();
+  return cachedAll.filter((item) =>
+    item.genres?.some((g) => {
+      const lg = g.toLowerCase();
+      return lg.includes('mult') || lg.includes('anim') || lg.includes('anime');
+    }) || item.title.toLowerCase().includes('multfilm') || item.title.toLowerCase().includes('anime')
+  ).sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0));
+}
+
+export function getDoramas(): MediaItem[] {
+  initData();
+  return cachedAll.filter((item) =>
+    item.genres?.some((g) => g.toLowerCase().includes('dorama') || g.toLowerCase().includes('koreys')) ||
+    (item.type === 'series' && item.country?.toLowerCase().includes('koreya')) ||
+    item.title.toLowerCase().includes('dorama')
+  ).sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0));
+}
+
+export function getLatestPremieres(): MediaItem[] {
+  initData();
+  return cachedAll.filter((item) => item.year >= 2024).sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0));
+}
+
 export interface FilterOptions {
   query?: string;
   type?: 'all' | 'movie' | 'series';
@@ -83,9 +107,22 @@ export function filterMedia(options: FilterOptions): MediaItem[] {
     // Genre filter
     if (options.genre && options.genre !== 'all') {
       const lowerG = options.genre.toLowerCase();
-      const genreMatch = item.genres?.some((g) => g.toLowerCase().includes(lowerG));
-      const titleMatch = item.title?.toLowerCase().includes(lowerG);
-      if (!genreMatch && !titleMatch) return false;
+      let matches = false;
+      if (lowerG === 'multfilm' || lowerG === 'animatsiya') {
+        matches = !!(item.genres?.some((g) => {
+          const lg = g.toLowerCase();
+          return lg.includes('mult') || lg.includes('anim') || lg.includes('anime');
+        }) || item.title.toLowerCase().includes('multfilm') || item.title.toLowerCase().includes('anime'));
+      } else if (lowerG === 'dorama') {
+        matches = !!(item.genres?.some((g) => g.toLowerCase().includes('dorama') || g.toLowerCase().includes('koreys')) ||
+                  item.country?.toLowerCase().includes('koreya') ||
+                  item.title.toLowerCase().includes('dorama'));
+      } else {
+        const genreMatch = item.genres?.some((g) => g.toLowerCase().includes(lowerG));
+        const titleMatch = item.title?.toLowerCase().includes(lowerG);
+        matches = !!(genreMatch || titleMatch);
+      }
+      if (!matches) return false;
     }
 
     // Country filter
