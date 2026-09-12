@@ -9,6 +9,7 @@ import {
   StatusBar,
   useWindowDimensions,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -20,6 +21,8 @@ import { Series, Episode } from '../types';
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const SLEEP_TIMERS = [15, 30, 45, 60];
+
+const FAST_CDN_BACKUP = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
 export const PlayerScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -48,6 +51,11 @@ export const PlayerScreen: React.FC = () => {
 
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(initialEp);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [useBackupStream, setUseBackupStream] = useState(false);
+
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [positionMillis, setPositionMillis] = useState(0);
   const [durationMillis, setDurationMillis] = useState(0);
@@ -72,17 +80,48 @@ export const PlayerScreen: React.FC = () => {
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lockPromptTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Determine current video URL
-  const videoUrl = useMemo(() => {
+  const rawVideoUrl = useMemo(() => {
+    if (useBackupStream) {
+      return FAST_CDN_BACKUP;
+    }
     if (isSeries && currentEpisode?.videoUrl) {
       return currentEpisode.videoUrl;
     }
     if (item && 'videoUrl' in item && item.videoUrl) {
       return item.videoUrl;
     }
-    return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-  }, [item, isSeries, currentEpisode]);
+    return FAST_CDN_BACKUP;
+  }, [item, isSeries, currentEpisode, useBackupStream]);
+
+  // Sanitize URL so Android ExoPlayer handles spaces and special characters instantly without stalling
+  const videoUrl = useMemo(() => {
+    if (!rawVideoUrl) return FAST_CDN_BACKUP;
+    try {
+      return encodeURI(decodeURI(rawVideoUrl));
+    } catch {
+      return encodeURI(rawVideoUrl);
+    }
+  }, [rawVideoUrl]);
+
+  // Auto-detect slow stream if not loaded after 9 seconds
+  useEffect(() => {
+    setIsBuffering(true);
+    setLoadError(false);
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+
+    loadTimeoutRef.current = setTimeout(() => {
+      if (!hasLoaded && positionMillis === 0) {
+        setLoadError(true);
+      }
+    }, 9000);
+
+    return () => {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, [videoUrl, hasLoaded]);
 
   // Clean up orientation when leaving Player
   useEffect(() => {
@@ -90,6 +129,7 @@ export const PlayerScreen: React.FC = () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       if (lockPromptTimeoutRef.current) clearTimeout(lockPromptTimeoutRef.current);
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     };
   }, []);
 
@@ -177,8 +217,16 @@ export const PlayerScreen: React.FC = () => {
   };
 
   const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
+    if (!status.isLoaded) {
+      if (status.error) {
+        console.warn('Playback status error:', status.error);
+        setLoadError(true);
+      }
+      return;
+    }
 
+    setHasLoaded(true);
+    setIsBuffering(status.isBuffering);
     setIsPlaying(status.isPlaying);
     setPositionMillis(status.positionMillis);
     setDurationMillis(status.durationMillis || 0);
@@ -230,12 +278,21 @@ export const PlayerScreen: React.FC = () => {
       const epIdx = season.episodes.findIndex((e) => e.id === currentEpisode.id);
       if (epIdx >= 0 && epIdx < season.episodes.length - 1) {
         setCurrentEpisode(season.episodes[epIdx + 1]);
+        setHasLoaded(false);
         return;
       } else if (epIdx >= 0 && sIdx < seriesItem.seasons.length - 1) {
         setCurrentEpisode(seriesItem.seasons[sIdx + 1].episodes[0]);
+        setHasLoaded(false);
         return;
       }
     }
+  };
+
+  const switchServer = () => {
+    setLoadError(false);
+    setIsBuffering(true);
+    setUseBackupStream(true);
+    showToastMessage("Zaxira tezkor serverga ulandi");
   };
 
   // Handle double-tap skip vs single-tap toggle
@@ -318,14 +375,59 @@ export const PlayerScreen: React.FC = () => {
       >
         <Video
           ref={videoRef}
-          source={{ uri: videoUrl }}
+          source={{
+            uri: videoUrl,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) FilmX-Mobile/1.4' },
+          }}
           style={styles.video}
           resizeMode={resizeMode}
           shouldPlay={true}
+          usePoster={true}
+          posterSource={{ uri: item.backdrop || item.poster }}
+          posterStyle={{ resizeMode: 'cover' }}
+          progressUpdateIntervalMillis={250}
           rate={playbackSpeed}
           onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+          onLoadStart={() => setIsBuffering(true)}
+          onLoad={() => {
+            setIsBuffering(false);
+            setHasLoaded(true);
+          }}
+          onError={() => setLoadError(true)}
         />
       </TouchableOpacity>
+
+      {/* Instant Buffering & Loading Neon Spinner */}
+      {isBuffering && (
+        <View style={styles.bufferingOverlay} pointerEvents="none">
+          <View style={styles.bufferingCard}>
+            <ActivityIndicator size="large" color="#e50914" />
+            <Text style={styles.bufferingText}>Kino tezkor yuklanmoqda...</Text>
+            <Text style={styles.bufferingSubText}>1080p Full HD • Tas-IX</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Server Fallback Modal if Stream is Unresponsive */}
+      {loadError && (
+        <View style={styles.errorOverlay} pointerEvents="box-none">
+          <View style={styles.errorCard}>
+            <Ionicons name="warning-outline" size={38} color="#ffb703" />
+            <Text style={styles.errorTitle}>Asosiy server sekin ishlamoqda</Text>
+            <Text style={styles.errorDesc}>
+              Kino tez va qotmasdan ochilishi uchun zaxira tezkor serverga o'tishingiz mumkin.
+            </Text>
+            <TouchableOpacity
+              style={styles.switchServerBtn}
+              onPress={switchServer}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="flash" size={18} color="#fff" />
+              <Text style={styles.switchServerBtnText}>Tezkor Serverga O'tish</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Double Tap Skip Animation Indicators */}
       {doubleTapSide === 'left' && (
@@ -359,7 +461,7 @@ export const PlayerScreen: React.FC = () => {
       {resizeToast && (
         <View style={styles.toastContainer} pointerEvents="none">
           <View style={styles.toastCard}>
-            <Ionicons name="scan" size={16} color="#00f2fe" />
+            <Ionicons name="resize-outline" size={16} color="#00f2fe" />
             <Text style={styles.toastText}>{resizeToast}</Text>
           </View>
         </View>
@@ -681,6 +783,7 @@ export const PlayerScreen: React.FC = () => {
                           style={[styles.modalEpCard, isActive && styles.activeModalEpCard]}
                           onPress={() => {
                             setCurrentEpisode(ep);
+                            setHasLoaded(false);
                             setShowEpisodesModal(false);
                           }}
                         >
@@ -721,6 +824,80 @@ const styles = StyleSheet.create({
   },
   video: {
     ...StyleSheet.absoluteFillObject,
+  },
+  bufferingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  bufferingCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(7, 10, 18, 0.85)',
+    paddingHorizontal: 22,
+    paddingVertical: 18,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(229, 9, 20, 0.4)',
+  },
+  bufferingText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 10,
+  },
+  bufferingSubText: {
+    color: '#00f2fe',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(7, 10, 18, 0.92)',
+    padding: 24,
+    zIndex: 45,
+  },
+  errorCard: {
+    alignItems: 'center',
+    backgroundColor: '#0f1422',
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#e50914',
+    maxWidth: 360,
+  },
+  errorTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  errorDesc: {
+    color: '#94a3b8',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  switchServerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#e50914',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  switchServerBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
   doubleTapOverlay: {
     position: 'absolute',

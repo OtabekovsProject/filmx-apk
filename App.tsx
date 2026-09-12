@@ -1,19 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Animated, Image, Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppProvider } from './src/context/AppContext';
+import { AppProvider, useApp } from './src/context/AppContext';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { CatalogScreen } from './src/screens/CatalogScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { DetailScreen } from './src/screens/DetailScreen';
 import { PlayerScreen } from './src/screens/PlayerScreen';
+import { NetworkBanner } from './src/components/NetworkBanner';
+import { UpdateModal } from './src/components/UpdateModal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -88,33 +90,98 @@ function MainTabs() {
   );
 }
 
+function AppContent() {
+  const { isOffline, isRestored, updateInfo, showUpdateModal, setShowUpdateModal } = useApp();
+  const [appReady, setAppReady] = useState(false);
+  const splashFadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Animated.timing(splashFadeAnim, {
+        toValue: 0,
+        duration: 450,
+        useNativeDriver: true,
+      }).start(() => setAppReady(true));
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <View style={styles.rootContainer}>
+      <NavigationContainer theme={customDarkTheme}>
+        <StatusBar style="light" backgroundColor="#070a12" />
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            animation: 'slide_from_right',
+            contentStyle: { backgroundColor: '#070a12' },
+          }}
+        >
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Search" component={SearchScreen} />
+          <Stack.Screen name="Detail" component={DetailScreen} />
+          <Stack.Screen
+            name="Player"
+            component={PlayerScreen}
+            options={{
+              animation: 'fade',
+              orientation: 'all',
+            }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+
+      {/* Global Realtime Internet Connectivity Banner */}
+      <NetworkBanner isOffline={isOffline} isRestored={isRestored} />
+
+      {/* In-App GitHub Auto-Update Modal */}
+      <UpdateModal
+        visible={showUpdateModal}
+        updateInfo={updateInfo}
+        onClose={() => setShowUpdateModal(false)}
+      />
+
+      {/* Branded Dark Splash Screen Overlay (Never white!) */}
+      {!appReady && (
+        <Animated.View style={[styles.splashOverlay, { opacity: splashFadeAnim }]} pointerEvents="none">
+          <Image
+            source={require('./assets/splash.png')}
+            style={styles.splashImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <NavigationContainer theme={customDarkTheme}>
-          <StatusBar style="light" backgroundColor="#070a12" />
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              animation: 'slide_from_right',
-              contentStyle: { backgroundColor: '#070a12' },
-            }}
-          >
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="Search" component={SearchScreen} />
-            <Stack.Screen name="Detail" component={DetailScreen} />
-            <Stack.Screen
-              name="Player"
-              component={PlayerScreen}
-              options={{
-                animation: 'fade',
-                orientation: 'all',
-              }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
+        <AppContent />
       </AppProvider>
     </SafeAreaProvider>
   );
 }
+
+const { width, height } = Dimensions.get('window');
+
+const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+    backgroundColor: '#070a12',
+  },
+  splashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#070a12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99999,
+  },
+  splashImage: {
+    width: Math.min(width * 0.7, 280),
+    height: Math.min(width * 0.7, 280),
+  },
+});

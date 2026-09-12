@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MediaItem, WatchHistoryItem } from '../types';
+import { checkAppUpdate, UpdateInfo } from '../services/updateService';
+
+const APP_VERSION = '1.4.0';
 
 interface AppContextType {
   favorites: MediaItem[];
@@ -18,6 +21,14 @@ interface AppContextType {
   removeHistoryItem: (id: string) => void;
   clearHistory: () => void;
   isWatched: (id: string) => boolean;
+  // Network connectivity status
+  isOffline: boolean;
+  isRestored: boolean;
+  // In-app Auto Updates
+  updateInfo: UpdateInfo | null;
+  showUpdateModal: boolean;
+  setShowUpdateModal: (show: boolean) => void;
+  checkUpdates: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -29,9 +40,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [favorites, setFavorites] = useState<MediaItem[]>([]);
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
 
+  // Network State
+  const [isOffline, setIsOffline] = useState(false);
+  const [isRestored, setIsRestored] = useState(false);
+  const wasOfflineRef = useRef(false);
+
+  // Auto-Update State
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+
   useEffect(() => {
     loadStorage();
+    checkUpdates();
+
+    // Check internet connection initially and every 10 seconds
+    checkConnectivity();
+    const netInterval = setInterval(checkConnectivity, 10000);
+
+    return () => clearInterval(netInterval);
   }, []);
+
+  const checkConnectivity = async () => {
+    try {
+      // Fast lightweight HEAD/ping to reliable CDN
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', {
+        method: 'HEAD',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (wasOfflineRef.current) {
+        // Connection just got restored!
+        wasOfflineRef.current = false;
+        setIsOffline(false);
+        setIsRestored(true);
+        setTimeout(() => setIsRestored(false), 3500);
+      } else {
+        setIsOffline(false);
+      }
+    } catch (e) {
+      if (!wasOfflineRef.current) {
+        wasOfflineRef.current = true;
+        setIsOffline(true);
+        setIsRestored(false);
+      }
+    }
+  };
+
+  const checkUpdates = async () => {
+    try {
+      const info = await checkAppUpdate(APP_VERSION);
+      if (info && info.hasUpdate) {
+        setUpdateInfo(info);
+        setShowUpdateModal(true);
+      }
+    } catch (e) {}
+  };
 
   const loadStorage = async () => {
     try {
@@ -129,6 +195,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeHistoryItem,
         clearHistory,
         isWatched,
+        isOffline,
+        isRestored,
+        updateInfo,
+        showUpdateModal,
+        setShowUpdateModal,
+        checkUpdates,
       }}
     >
       {children}

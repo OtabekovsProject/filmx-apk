@@ -58,13 +58,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
         with:
-          tag_name: v1.3.0
-          name: "FilmX Android APK v1.3.0 — To'liq Ekran Pleyer & Qidiruv — 1,470+ Kino, Multfilm & 300+ Seriallar"
+          tag_name: v1.4.0
+          name: "FilmX Android APK v1.4.0 — Tezkor Pleyer, Qorong'i Splash & Avto-Yangilanish"
           body: |
-            ## 🎬 FilmX Mobile v1.2.0
-            O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
+            ## 🎬 FilmX Mobile v1.4.0
+O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
 
-            ### ✨ Xususiyatlar:
+### 🚀 v1.4.0 Yangiliklari:
+- ⚡ **Kinoni tezkor ochish**: Maxsus URL encoder va optimallashtirilgan ExoPlayer buferi orqali kinolar va seriallar kechikishlarsiz darhol o'ynatiladi.
+- 🎨 **Yangi Qorong'i Splash Screen**: Oq ekran chaqnashi butunlay yo'qotildi! Ilova to'q binafsha/qora (#070a12) fon va rasmiy FilmX logotipi bilan ochiladi.
+- 🔄 **Avtomatik Yangilanish (In-App GitHub Updates)**: Telefondagi ilovangiz GitHub-dagi yangi relizlarni avtomatik aniqlaydi va bir tugma bilan to'g'ridan-to'g'ri yangilaydi.
+- 📡 **Internet Holati Xabarnomasi**: Aloqa uzilganda va qayta tiklanganda tepadagi animatsiyali banner orqali xabar beradi.
+- 📺 **Kengaytirilgan Fullscreen Pleyer**: Ekran burish (landscape), nisbatlar (Cover/Contain/Stretch), ekranni qulflash.
+            ### ✨ Qo'shimcha Imkoniyatlar:
             - ⚡ **60fps Yengil va Tezkor**: Silliq animatsiyalar va qotmasdan ishlash
             - 🎬 **1,470+ Kino, Serial, Multfilm va Doramalar (5,000+ qism)
             - 📺 **To'liq Ekran (Fullscreen & Landscape)**: Gorizontal burish, Asl/To'liq/Cho'zilgan o'lchamlar, 10s ikki marta bosish, Ekran qulfi

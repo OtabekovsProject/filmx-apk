@@ -1,26 +1,26 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import { useApp } from "../context/AppContext";
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { useApp } from '../context/AppContext';
 
 export const Header: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { favoritesCount } = useApp();
+  const { favoritesCount, updateInfo, setShowUpdateModal } = useApp();
 
   const handleSearchPress = () => {
     try {
-      navigation.navigate("SearchTab");
+      navigation.navigate('SearchTab');
     } catch (e) {
-      navigation.navigate("Search");
+      navigation.navigate('Search');
     }
   };
 
   const handleFavoritesPress = () => {
     try {
-      navigation.navigate("FavoritesTab");
+      navigation.navigate('FavoritesTab');
     } catch (e) {
-      navigation.navigate("Favorites");
+      navigation.navigate('Favorites');
     }
   };
 
@@ -28,7 +28,7 @@ export const Header: React.FC = () => {
     <View style={styles.container}>
       <View style={styles.brandRow}>
         <Image
-          source={require("../../assets/favicon.png")}
+          source={require('../../assets/favicon.png')}
           style={styles.logoIcon}
           resizeMode="contain"
         />
@@ -39,6 +39,19 @@ export const Header: React.FC = () => {
       </View>
 
       <View style={styles.actionRow}>
+        {/* If GitHub Auto-Update is Available */}
+        {updateInfo?.hasUpdate && (
+          <TouchableOpacity
+            style={[styles.iconBtn, styles.updateBtn]}
+            onPress={() => setShowUpdateModal(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="rocket" size={18} color="#00f2fe" />
+            <View style={styles.updateDot} />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={styles.iconBtn}
           onPress={handleSearchPress}
@@ -68,19 +81,19 @@ export const Header: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
-    backgroundColor: "rgba(7, 10, 18, 0.95)",
+    backgroundColor: 'rgba(7, 10, 18, 0.95)',
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
   },
   brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   logoIcon: {
@@ -90,52 +103,68 @@ const styles = StyleSheet.create({
   },
   brandText: {
     fontSize: 22,
-    fontWeight: "900",
-    color: "#ffffff",
+    fontWeight: '900',
+    color: '#ffffff',
     letterSpacing: -0.5,
   },
   brandAccent: {
-    color: "#e50914",
+    color: '#e50914',
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#00f2fe",
+    backgroundColor: '#00f2fe',
     marginLeft: 2,
     marginTop: -8,
   },
   actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   iconBtn: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  updateBtn: {
+    backgroundColor: 'rgba(0, 242, 254, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 242, 254, 0.4)',
+  },
+  updateDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#00f2fe',
+    borderWidth: 1.5,
+    borderColor: '#070a12',
   },
   badge: {
-    position: "absolute",
+    position: 'absolute',
     top: -3,
     right: -3,
-    backgroundColor: "#e50914",
+    backgroundColor: '#e50914',
     borderRadius: 9,
     minWidth: 18,
     height: 18,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: "#070a12",
+    borderColor: '#070a12',
   },
   badgeText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 10,
-    fontWeight: "800",
+    fontWeight: '800',
   },
 });
