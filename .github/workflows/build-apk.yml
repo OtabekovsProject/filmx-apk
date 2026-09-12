@@ -1,0 +1,105 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build FilmX Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 📱 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 🟢 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📦 Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+
+      - name: 🛠️ Prebuild Android Project
+        run: |
+          npx expo prebuild --platform android --clean
+
+      - name: 🔐 Configure Release Signing
+        working-directory: android
+        run: |
+          keytool -genkeypair -v -storetype PKCS12 -keystore app/release.keystore -alias filmx-key -keyalg RSA -keysize 2048 -validity 10000 -storepass filmx1234 -keypass filmx1234 -dname "CN=FilmX, OU=Mobile, O=FilmX, L=Tashkent, S=Tashkent, C=UZ"
+          cat << 'EOF' >> app/build.gradle
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('release.keystore')
+                      storePassword 'filmx1234'
+                      keyAlias 'filmx-key'
+                      keyPassword 'filmx1234'
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+
+      - name: 🔨 Build Release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -x lint -x test
+
+      - name: 📁 Prepare APK Output
+        run: |
+          mkdir -p build-output
+          find android/app/build/outputs/apk -name "*.apk" -exec cp {} build-output/FilmX-v1.0.apk \;
+          ls -la build-output/
+
+      - name: 📤 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilmX-Release-APK
+          path: build-output/FilmX-v1.0.apk
+          retention-days: 30
+
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
+        with:
+          tag_name: v1.0.0
+          name: "FilmX Android APK v1.0.0"
+          body: |
+            ## 🎬 FilmX Mobile v1.0.0
+            O'zbek tilidagi eng so'nggi tarjima kinolar, premyeralar va yangi seriallar portali!
+
+            ### ✨ Asosiy Xususiyatlar:
+            - ⚡ **60fps Optimal Tezlik**: Qotmaydigan, yengil va tezkor interfeys
+            - 🎬 **918+ Kino va Seriallar**: 1080p Full HD va Tas-ix yuqori tezlikda oqim
+            - 📺 **Kuchli Video Pleyer**: 10s oldinga/orqaga, tezlikni sozlash (0.75x - 2x), sifat, uyqu taymeri
+            - 🔁 **Seriallar Avto-ijrosi**: 5 soniyalik ortga sanash bilan avtomatik keyingi qismga o'tish
+            - ❤️ **Sevimlilar va Tarix**: Ko'rilgan daqiqasidan avtomatik davom ettirish
+            - 🔍 **Tezkor Filtr va Qidiruv**: Janr, davlat, yil va reyting bo'yicha saralash
+
+            📥 **O'rnatish uchun pastdagi `FilmX-v1.0.apk` faylini yuklab oling!**
+          files: build-output/FilmX-v1.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
