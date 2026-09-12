@@ -58,15 +58,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
         with:
-          tag_name: v1.1.0
-          name: "FilmX Android APK v1.1.0 — 1,180+ Kino, Multfilm & Seriallar"
+          tag_name: v1.2.0
+          name: "FilmX Android APK v1.2.0 — 1,470+ Kino, Multfilm & 300+ Seriallar"
           body: |
-            ## 🎬 FilmX Mobile v1.1.0
+            ## 🎬 FilmX Mobile v1.2.0
             O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
 
             ### ✨ Xususiyatlar:
             - ⚡ **60fps Yengil va Tezkor**: Silliq animatsiyalar va qotmasdan ishlash
-            - 🎬 **1,180+ Kino, Serial, Multfilm va Doramalar (2,000+ qism)**: 1080p Full HD va Tas-ix yuqori tezlikda oqim
+            - 🎬 **1,470+ Kino, Serial, Multfilm va Doramalar (5,000+ qism)
             - 📺 **Zamonaviy Video Pleyer**: 10s oldinga/orqaga, tezlikni sozlash (0.75x - 2x), sifat, uyqu taymeri
             - 🔁 **Seriallar Avto-ijrosi**: 5 soniyalik hisoblagich bilan avtomatik keyingi qismga o'tish
             - ❤️ **Sevimlilar va Tarix**: Ko'rilgan daqiqasidan avtomatik davom ettirish

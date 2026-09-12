@@ -271,7 +271,7 @@ export const HomeScreen: React.FC = () => {
         {/* Presentation Banner */}
         <View style={styles.banner}>
           <View style={styles.bannerBadge}>
-            <Text style={styles.bannerBadgeText}>1,050+ KINO · 130+ SERIAL · 2,000+ QISM · 1080P FHD</Text>
+            <Text style={styles.bannerBadgeText}>1,170+ KINO · 300+ SERIAL · 5,000+ QISM · 1080P FHD</Text>
           </View>
           <Text style={styles.bannerTitle}>
             FilmX — O'zbek tilidagi kinolar, seriallar va multfilmlar olami
