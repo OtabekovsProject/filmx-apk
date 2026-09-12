@@ -22,11 +22,6 @@ import { Series, Episode } from '../types';
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const SLEEP_TIMERS = [15, 30, 45, 60];
 
-/**
- * Optimizes and cleans video URL for Android ExoPlayer:
- * 1. Directly routes https://fayllar1.ru/XX/ to https://XX.fayllar1.ru/XX/ (bypasses 301 redirect delay).
- * 2. Safely encodes spaces (%20) and URL special characters without breaking path slashes.
- */
 function optimizeVideoUrl(rawUrl?: string): string {
   if (!rawUrl) return '';
   let url = rawUrl.trim();
@@ -127,7 +122,6 @@ export const PlayerScreen: React.FC = () => {
     return '';
   }, [item, isSeries, currentEpisode]);
 
-  // Clean, high-performance optimized URL for Android ExoPlayer
   const videoUrl = useMemo(() => {
     return optimizeVideoUrl(rawVideoUrl);
   }, [rawVideoUrl]);
@@ -148,26 +142,40 @@ export const PlayerScreen: React.FC = () => {
     };
   }, []);
 
-  const triggerControls = useCallback(() => {
+  // Auto-hide controls after 2.8 seconds of inactivity
+  const scheduleControlsHide = useCallback(() => {
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 2800);
+  }, []);
+
+  // One-tap controls toggle (Immediate hide if visible, show if hidden)
+  const toggleControls = useCallback(() => {
     if (isLocked) {
       setShowLockPrompt(true);
       if (lockPromptTimeoutRef.current) clearTimeout(lockPromptTimeoutRef.current);
       lockPromptTimeoutRef.current = setTimeout(() => {
         setShowLockPrompt(false);
-      }, 3000);
+      }, 2500);
       return;
     }
 
-    setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 4500);
-  }, [isLocked]);
+    setShowControls((prev) => {
+      const next = !prev;
+      if (next) {
+        scheduleControlsHide();
+      } else {
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      }
+      return next;
+    });
+  }, [isLocked, scheduleControlsHide]);
 
+  // Initial controls auto-hide after 3 seconds
   useEffect(() => {
-    triggerControls();
-  }, [triggerControls]);
+    scheduleControlsHide();
+  }, [scheduleControlsHide]);
 
   // Sleep timer handler
   useEffect(() => {
@@ -193,7 +201,7 @@ export const PlayerScreen: React.FC = () => {
 
   // Toggle true fullscreen & landscape mode
   const toggleFullscreen = async () => {
-    triggerControls();
+    scheduleControlsHide();
     try {
       if (!isFullscreen) {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
@@ -211,7 +219,7 @@ export const PlayerScreen: React.FC = () => {
 
   // Cycle aspect ratio / resize mode
   const cycleResizeMode = () => {
-    triggerControls();
+    scheduleControlsHide();
     if (resizeMode === ResizeMode.CONTAIN) {
       setResizeMode(ResizeMode.COVER);
       showToastMessage("To'liq ekran (Qora hoshiyasiz)");
@@ -243,7 +251,9 @@ export const PlayerScreen: React.FC = () => {
 
     setHasLoaded(true);
     setPlaybackError(null);
-    setIsBuffering(status.isBuffering);
+    // CRITICAL: On Android ExoPlayer, status.isBuffering is true during background buffering
+    // even while the video is playing smoothly! We ONLY mark isBuffering if NOT playing.
+    setIsBuffering(status.isBuffering && !status.isPlaying);
     setIsPlaying(status.isPlaying);
     setPositionMillis(status.positionMillis);
     setDurationMillis(status.durationMillis || 0);
@@ -267,16 +277,18 @@ export const PlayerScreen: React.FC = () => {
   };
 
   const togglePlayPause = async () => {
-    triggerControls();
+    scheduleControlsHide();
     if (isPlaying) {
       await videoRef.current?.pauseAsync();
     } else {
       await videoRef.current?.playAsync();
+      // When playing resumes, auto-hide controls quickly
+      scheduleControlsHide();
     }
   };
 
   const skipTime = async (seconds: number) => {
-    triggerControls();
+    scheduleControlsHide();
     const newPos = Math.max(0, Math.min(durationMillis, positionMillis + seconds * 1000));
     await videoRef.current?.setPositionAsync(newPos);
   };
@@ -318,7 +330,8 @@ export const PlayerScreen: React.FC = () => {
     const touchX = evt.nativeEvent.locationX;
     const timeDelta = now - lastTapRef.current.time;
 
-    if (timeDelta < 320 && Math.abs(touchX - lastTapRef.current.x) < 120) {
+    if (timeDelta < 300 && Math.abs(touchX - lastTapRef.current.x) < 120) {
+      // Double tap detected -> skip
       if (touchX < width / 2) {
         skipTime(-10);
         triggerDoubleTapAnim('left');
@@ -329,7 +342,8 @@ export const PlayerScreen: React.FC = () => {
       lastTapRef.current = { time: 0, x: 0 };
     } else {
       lastTapRef.current = { time: now, x: touchX };
-      triggerControls();
+      // Single tap -> toggle controls on/off immediately
+      toggleControls();
     }
   };
 
@@ -339,25 +353,25 @@ export const PlayerScreen: React.FC = () => {
     Animated.sequence([
       Animated.timing(doubleTapAnim, {
         toValue: 1,
-        duration: 200,
+        duration: 180,
         useNativeDriver: true,
       }),
       Animated.timing(doubleTapAnim, {
         toValue: 0,
-        duration: 350,
-        delay: 200,
+        duration: 250,
+        delay: 150,
         useNativeDriver: true,
       }),
     ]).start(() => setDoubleTapSide(null));
   };
 
   const handleSeek = async (evt: any) => {
+    scheduleControlsHide();
     const trackWidth = Math.max(100, width - 130);
     const clickX = evt.nativeEvent.locationX;
     const ratio = Math.max(0, Math.min(1, clickX / trackWidth));
     const targetMillis = ratio * durationMillis;
     await videoRef.current?.setPositionAsync(targetMillis);
-    triggerControls();
   };
 
   const handleGoBack = async () => {
@@ -378,13 +392,16 @@ export const PlayerScreen: React.FC = () => {
 
   const progressPercent = durationMillis > 0 ? (positionMillis / durationMillis) * 100 : 0;
 
+  // Only show minimal spinner when NOT playing and genuinely buffering or uninitialized
+  const showBufferingSpinner = (!hasLoaded || (isBuffering && !isPlaying)) && !playbackError;
+
   if (!item) return null;
 
   return (
     <View style={styles.container}>
       <StatusBar hidden={true} />
 
-      {/* Main Video Surface */}
+      {/* Main Video Touch Surface */}
       <TouchableOpacity
         style={styles.videoTouch}
         activeOpacity={1}
@@ -420,14 +437,10 @@ export const PlayerScreen: React.FC = () => {
         />
       </TouchableOpacity>
 
-      {/* Instant Buffering & Loading Neon Spinner */}
-      {isBuffering && !playbackError && (
+      {/* Minimal, Completely Non-Obtrusive Transparent Buffering Spinner (NO CARDS, NO BLOCKING TEXT) */}
+      {showBufferingSpinner && (
         <View style={styles.bufferingOverlay} pointerEvents="none">
-          <View style={styles.bufferingCard}>
-            <ActivityIndicator size="large" color="#e50914" />
-            <Text style={styles.bufferingText}>Kino tezkor yuklanmoqda...</Text>
-            <Text style={styles.bufferingSubText}>1080p Full HD • Tezkor Tas-IX</Text>
-          </View>
+          <ActivityIndicator size="large" color="#e50914" />
         </View>
       )}
 
@@ -472,8 +485,8 @@ export const PlayerScreen: React.FC = () => {
           ]}
           pointerEvents="none"
         >
-          <Ionicons name="play-back" size={36} color="#fff" />
-          <Text style={styles.doubleTapText}>-10 soniya</Text>
+          <Ionicons name="play-back" size={34} color="#fff" />
+          <Text style={styles.doubleTapText}>-10s</Text>
         </Animated.View>
       )}
       {doubleTapSide === 'right' && (
@@ -485,8 +498,8 @@ export const PlayerScreen: React.FC = () => {
           ]}
           pointerEvents="none"
         >
-          <Ionicons name="play-forward" size={36} color="#fff" />
-          <Text style={styles.doubleTapText}>+10 soniya</Text>
+          <Ionicons name="play-forward" size={34} color="#fff" />
+          <Text style={styles.doubleTapText}>+10s</Text>
         </Animated.View>
       )}
 
@@ -501,7 +514,7 @@ export const PlayerScreen: React.FC = () => {
             }}
             activeOpacity={0.85}
           >
-            <Ionicons name="lock-open" size={24} color="#fff" />
+            <Ionicons name="lock-open" size={22} color="#fff" />
             <Text style={styles.unlockText}>Qulfdan chiqarish</Text>
           </TouchableOpacity>
         </View>
@@ -514,13 +527,13 @@ export const PlayerScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Full Player HUD Controls Overlay */}
+      {/* Pure Cinema Player HUD Controls Overlay (Center is completely transparent!) */}
       {showControls && !isLocked && (
         <View style={styles.hudOverlay} pointerEvents="box-none">
-          {/* Top Bar */}
+          {/* Top Bar with gentle gradient backdrop */}
           <View style={styles.topHud}>
             <TouchableOpacity style={styles.hudCircleBtn} onPress={handleGoBack}>
-              <Ionicons name="arrow-back" size={24} color="#ffffff" />
+              <Ionicons name="arrow-back" size={22} color="#ffffff" />
             </TouchableOpacity>
 
             <View style={styles.hudTitleWrap}>
@@ -542,12 +555,12 @@ export const PlayerScreen: React.FC = () => {
                   showToastMessage('Ekran qulflandi');
                 }}
               >
-                <Ionicons name="lock-closed" size={16} color="#00f2fe" />
+                <Ionicons name="lock-closed" size={15} color="#00f2fe" />
                 <Text style={styles.pillActionText}>Qulf</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.pillActionBtn} onPress={cycleResizeMode}>
-                <Ionicons name="scan-outline" size={16} color="#00f2fe" />
+                <Ionicons name="scan-outline" size={15} color="#00f2fe" />
                 <Text style={styles.pillActionText}>O'lcham</Text>
               </TouchableOpacity>
 
@@ -556,7 +569,7 @@ export const PlayerScreen: React.FC = () => {
                   style={styles.episodesToggle}
                   onPress={() => setShowEpisodesModal(true)}
                 >
-                  <Ionicons name="list" size={18} color="#fff" />
+                  <Ionicons name="list" size={16} color="#fff" />
                   <Text style={styles.episodesToggleText}>Qismlar</Text>
                 </TouchableOpacity>
               )}
@@ -566,26 +579,26 @@ export const PlayerScreen: React.FC = () => {
           {/* Center Play/Pause & Fast-Forward / Rewind Controls */}
           <View style={styles.centerHud} pointerEvents="box-none">
             <TouchableOpacity style={styles.skipBtn} onPress={() => skipTime(-10)}>
-              <Ionicons name="play-back" size={26} color="#ffffff" />
+              <Ionicons name="play-back" size={24} color="#ffffff" />
               <Text style={styles.skipLabel}>10s</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.playPauseBtn} onPress={togglePlayPause}>
               <Ionicons
                 name={isPlaying ? 'pause' : 'play'}
-                size={36}
+                size={34}
                 color="#ffffff"
                 style={!isPlaying ? { marginLeft: 3 } : undefined}
               />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.skipBtn} onPress={() => skipTime(10)}>
-              <Ionicons name="play-forward" size={26} color="#ffffff" />
+              <Ionicons name="play-forward" size={24} color="#ffffff" />
               <Text style={styles.skipLabel}>10s</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Bottom Controls: Scrubber & Tools */}
+          {/* Bottom Controls: Scrubber & Tools with gentle backdrop */}
           <View style={styles.bottomHud}>
             {/* Scrubber Time Bar */}
             <View style={styles.scrubberRow}>
@@ -610,7 +623,7 @@ export const PlayerScreen: React.FC = () => {
                   style={styles.toolBtn}
                   onPress={() => setShowSpeedModal(true)}
                 >
-                  <Ionicons name="speedometer-outline" size={16} color="#cbd5e1" />
+                  <Ionicons name="speedometer-outline" size={15} color="#cbd5e1" />
                   <Text style={styles.toolBtnText}>{playbackSpeed}x</Text>
                 </TouchableOpacity>
 
@@ -620,7 +633,7 @@ export const PlayerScreen: React.FC = () => {
                 >
                   <Ionicons
                     name="moon-outline"
-                    size={16}
+                    size={15}
                     color={sleepTimer !== null ? '#070a12' : '#cbd5e1'}
                   />
                   <Text style={[styles.toolBtnText, sleepTimer !== null && styles.activeToolBtnText]}>
@@ -642,7 +655,7 @@ export const PlayerScreen: React.FC = () => {
                 >
                   <Ionicons
                     name={isFullscreen ? 'contract' : 'expand'}
-                    size={20}
+                    size={18}
                     color="#ffffff"
                   />
                   <Text style={styles.fullscreenBtnText}>
@@ -829,26 +842,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 20,
-  },
-  bufferingCard: {
-    backgroundColor: 'rgba(7, 10, 18, 0.82)',
-    paddingHorizontal: 22,
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(229, 9, 20, 0.3)',
-    gap: 8,
-  },
-  bufferingText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  bufferingSubText: {
-    color: '#00f2fe',
-    fontSize: 11,
-    fontWeight: '800',
+    backgroundColor: 'transparent',
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -922,43 +916,43 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: '40%',
+    width: '35%',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 35,
   },
   doubleTapLeft: {
     left: 0,
-    backgroundColor: 'rgba(0, 242, 254, 0.15)',
-    borderTopRightRadius: 100,
-    borderBottomRightRadius: 100,
+    backgroundColor: 'rgba(0, 242, 254, 0.12)',
+    borderTopRightRadius: 80,
+    borderBottomRightRadius: 80,
   },
   doubleTapRight: {
     right: 0,
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
-    borderTopLeftRadius: 100,
-    borderBottomLeftRadius: 100,
+    backgroundColor: 'rgba(229, 9, 20, 0.12)',
+    borderTopLeftRadius: 80,
+    borderBottomLeftRadius: 80,
   },
   doubleTapText: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '800',
-    marginTop: 6,
+    marginTop: 4,
   },
   lockOverlay: {
     position: 'absolute',
-    top: 24,
-    right: 24,
+    top: 20,
+    right: 20,
     zIndex: 60,
   },
   unlockBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(229, 9, 20, 0.9)',
+    backgroundColor: 'rgba(229, 9, 20, 0.92)',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
+    paddingVertical: 9,
+    borderRadius: 20,
     shadowColor: '#e50914',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
@@ -967,19 +961,19 @@ const styles = StyleSheet.create({
   },
   unlockText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   toastContainer: {
     position: 'absolute',
-    top: 24,
+    top: 20,
     alignSelf: 'center',
-    backgroundColor: 'rgba(7, 10, 18, 0.9)',
+    backgroundColor: 'rgba(7, 10, 18, 0.92)',
     borderWidth: 1,
     borderColor: 'rgba(0, 242, 254, 0.4)',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 7,
+    borderRadius: 18,
     zIndex: 70,
   },
   toastText: {
@@ -989,7 +983,7 @@ const styles = StyleSheet.create({
   },
   hudOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(7, 10, 18, 0.5)',
+    backgroundColor: 'transparent',
     justifyContent: 'space-between',
     padding: 16,
     zIndex: 30,
@@ -999,12 +993,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    backgroundColor: 'rgba(7, 10, 18, 0.65)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   hudCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(7, 10, 18, 0.75)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1013,12 +1011,12 @@ const styles = StyleSheet.create({
   },
   hudTitle: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
   hudSubTitle: {
     color: '#00f2fe',
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
     fontWeight: '600',
   },
@@ -1030,10 +1028,10 @@ const styles = StyleSheet.create({
   pillActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(7, 10, 18, 0.85)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(0, 242, 254, 0.3)',
@@ -1046,27 +1044,27 @@ const styles = StyleSheet.create({
   episodesToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#e50914',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
   },
   episodesToggleText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   centerHud: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 46,
+    gap: 40,
   },
   playPauseBtn: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: 'rgba(229, 9, 20, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1078,13 +1076,13 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     alignItems: 'center',
-    backgroundColor: 'rgba(7, 10, 18, 0.75)',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    backgroundColor: 'rgba(7, 10, 18, 0.7)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   skipLabel: {
     color: '#cbd5e1',
@@ -1092,19 +1090,22 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   bottomHud: {
-    paddingBottom: 4,
+    backgroundColor: 'rgba(7, 10, 18, 0.65)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   scrubberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 6,
   },
   timeText: {
     color: '#cbd5e1',
     fontSize: 11,
     fontWeight: '700',
-    minWidth: 42,
+    minWidth: 38,
     textAlign: 'center',
   },
   progressTrackWrap: {
@@ -1151,12 +1152,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(7, 10, 18, 0.85)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   activeToolBtn: {
     backgroundColor: '#ffb703',
@@ -1174,10 +1175,10 @@ const styles = StyleSheet.create({
   fullscreenBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#e50914',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
     shadowColor: '#e50914',
     shadowOffset: { width: 0, height: 4 },
@@ -1186,7 +1187,7 @@ const styles = StyleSheet.create({
   },
   fullscreenBtnText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
   nextOverlay: {
