@@ -161,9 +161,16 @@ function AppContent() {
 }
 
 export default function App() {
+  const [reloadKey, setReloadKey] = React.useState(0);
+
+  const handleAppRestart = React.useCallback((message?: string) => {
+    // Increment root key to cleanly remount navigation stack with fresh collections
+    setReloadKey((prev) => prev + 1);
+  }, []);
+
   return (
-    <SafeAreaProvider>
-      <AppProvider>
+    <SafeAreaProvider key={`safe-root-${reloadKey}`}>
+      <AppProvider onAppRestart={handleAppRestart}>
         <AppContent />
       </AppProvider>
     </SafeAreaProvider>

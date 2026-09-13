@@ -117,6 +117,7 @@ export const PlayerScreen: React.FC = () => {
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lockPromptTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if we have an offline local download
   const currentDownload = getDownload(id, currentEpisode?.id);
@@ -153,6 +154,7 @@ export const PlayerScreen: React.FC = () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       if (lockPromptTimeoutRef.current) clearTimeout(lockPromptTimeoutRef.current);
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     };
   }, []);
 
@@ -338,14 +340,18 @@ export const PlayerScreen: React.FC = () => {
     showToastMessage('Qayta ulanmoqda...');
   };
 
-  // Handle double-tap skip vs single-tap toggle
+  // Handle double-tap skip vs single-tap toggle (debounced to eliminate controls flicker)
   const handleTouchScreen = (evt: any) => {
     const now = Date.now();
     const touchX = evt.nativeEvent.locationX;
     const timeDelta = now - lastTapRef.current.time;
 
-    if (timeDelta < 300 && Math.abs(touchX - lastTapRef.current.x) < 120) {
-      // Double tap detected -> skip
+    if (timeDelta < 280 && Math.abs(touchX - lastTapRef.current.x) < 140) {
+      // Double tap detected -> cancel pending single tap toggle immediately
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
       if (touchX < width / 2) {
         skipTime(-10);
         triggerDoubleTapAnim('left');
@@ -356,8 +362,15 @@ export const PlayerScreen: React.FC = () => {
       lastTapRef.current = { time: 0, x: 0 };
     } else {
       lastTapRef.current = { time: now, x: touchX };
-      // Single tap -> toggle controls on/off immediately
-      toggleControls();
+      // Cancel previous single-tap debounce if any
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+      // Single tap -> wait 260ms before toggling controls to allow double-tap interception
+      singleTapTimerRef.current = setTimeout(() => {
+        toggleControls();
+        singleTapTimerRef.current = null;
+      }, 260);
     }
   };
 
@@ -424,7 +437,13 @@ export const PlayerScreen: React.FC = () => {
         <Video
           key={`video-${retryKey}-${videoUrl}`}
           ref={videoRef}
-          source={{ uri: videoUrl }}
+          source={{
+            uri: videoUrl,
+            headers: {
+              'User-Agent': 'FilmX-Mobile-Player/1.7',
+              'Accept': '*/*',
+            },
+          }}
           style={styles.video}
           resizeMode={resizeMode}
           shouldPlay={true}
@@ -524,7 +543,9 @@ export const PlayerScreen: React.FC = () => {
             style={styles.unlockBtn}
             onPress={() => {
               setIsLocked(false);
-              showToastMessage('Ekran qulfdan chiqarildi');
+              setShowControls(true);
+              scheduleControlsHide();
+              showToastMessage('🔓 Ekran qulfdan chiqarildi');
             }}
             activeOpacity={0.85}
           >
@@ -566,7 +587,8 @@ export const PlayerScreen: React.FC = () => {
                 style={styles.pillActionBtn}
                 onPress={() => {
                   setIsLocked(true);
-                  showToastMessage('Ekran qulflandi');
+                  setShowControls(false);
+                  showToastMessage('🔒 Ekran qulflandi');
                 }}
               >
                 <Ionicons name="lock-closed" size={15} color="#00f2fe" />
@@ -964,15 +986,19 @@ const styles = StyleSheet.create({
   },
   doubleTapLeft: {
     left: 0,
-    backgroundColor: 'rgba(0, 242, 254, 0.12)',
-    borderTopRightRadius: 80,
-    borderBottomRightRadius: 80,
+    backgroundColor: 'rgba(0, 242, 254, 0.15)',
+    borderTopRightRadius: 100,
+    borderBottomRightRadius: 100,
+    borderRightWidth: 1.5,
+    borderRightColor: 'rgba(0, 242, 254, 0.4)',
   },
   doubleTapRight: {
     right: 0,
-    backgroundColor: 'rgba(229, 9, 20, 0.12)',
-    borderTopLeftRadius: 80,
-    borderBottomLeftRadius: 80,
+    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    borderTopLeftRadius: 100,
+    borderBottomLeftRadius: 100,
+    borderLeftWidth: 1.5,
+    borderLeftColor: 'rgba(229, 9, 20, 0.4)',
   },
   doubleTapText: {
     color: '#ffffff',
@@ -1363,13 +1389,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   modalContent: {
-    maxHeight: '75%',
+    maxHeight: '85%',
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
     backgroundColor: '#070a12',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
     borderTopWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(0, 242, 254, 0.25)',
   },
   modalHeader: {
     flexDirection: 'row',

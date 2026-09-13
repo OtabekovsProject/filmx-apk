@@ -43,6 +43,27 @@ export type DataUpdateListener = (info: {
   timestamp: number;
 }) => void;
 
+// App Restarter callback for in-app soft reloads upon GitHub updates
+type AppRestartListener = (message?: string) => void;
+let appRestarter: AppRestartListener | null = null;
+
+export function registerAppRestarter(callback: AppRestartListener): () => void {
+  appRestarter = callback;
+  return () => {
+    if (appRestarter === callback) appRestarter = null;
+  };
+}
+
+export function triggerAppRestart(message?: string) {
+  if (appRestarter) {
+    try {
+      appRestarter(message);
+    } catch (e) {
+      console.warn("Error triggering app restart:", e);
+    }
+  }
+}
+
 const updateListeners = new Set<DataUpdateListener>();
 
 export function subscribeDataUpdates(listener: DataUpdateListener): () => void {
@@ -281,8 +302,11 @@ export async function syncRemoteMediaData(force = false): Promise<SyncResult> {
         console.warn("Disk cache save warning:", diskErr);
       }
 
-      // Notify UI reactively
+      // Notify UI reactively & trigger in-app soft restart
       notifyDataListeners(Math.max(0, diff));
+      if (diff > 0) {
+        triggerAppRestart(`⚡ +${diff} ta yangi kino va seriallar o'rnatildi! Ilova yangilandi.`);
+      }
 
       isSyncing = false;
       return {

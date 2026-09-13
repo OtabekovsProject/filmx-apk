@@ -58,13 +58,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
         with:
-          tag_name: v1.6.0
-          name: "FilmX Android APK v1.6.0 — Jonli Avto-Yangilanish (In-App OTA Sync), 60FPS & Qotmasdan Ishlash"
+          tag_name: v1.7.0
+          name: "FilmX Android APK v1.7.0 — Yuqori Tezlikdagi Neon Pleyer, In-App GitHub Avto-Yangilanish & 60FPS"
           body: |
-            ## 🎬 FilmX Mobile v1.6.0 (Yangi Nashr)
+            ## 🎬 FilmX Mobile v1.7.0 (Yangi Nashr)
             O'zbek tilidagi barcha tarjima kinolar, seriallar va yangi premyeralar portali!
 
-            ### 🚀 v1.6.0 Yangiliklari:
+            ### 🚀 v1.7.0 Yangiliklari:
             - 🔄 **Jonli Avtomatik Yangilanish (In-App OTA Data Sync)**: Saytga yangi kino yoki serial qo'shilganda, ilova fon rejimida avtomatik ravishda yangilanadi. Foydalanuvchidan hech qanday APK ni qayta o'rnatish so'ralmaydi!
             - ⚡ **Qayta O'rnatish (PackageInstaller) Muammosi Butunlay Yo'qotildi**: Yangi filmlar chiqqanda majburiy APK yuklab olib ustiga o'rnatish oynasi olib tashlandi.
             - 🎯 **60FPS Tezkor va Ravon Ishlash**: Katalogdagi 1,480+ kinolar va 5,000+ qismlar bir zumda ochiladi, lag va qotishlar to'liq bartaraf etildi.

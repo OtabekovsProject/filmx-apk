@@ -5,6 +5,7 @@ import { checkAppUpdate, UpdateInfo } from "../services/updateService";
 import {
   subscribeDataUpdates,
   syncRemoteMediaData,
+  registerAppRestarter,
   SyncResult,
 } from "../services/dataService";
 import {
@@ -16,7 +17,7 @@ import {
   generateDownloadId,
 } from "../services/downloadService";
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 
 interface AppContextType {
   favorites: MediaItem[];
@@ -54,6 +55,7 @@ interface AppContextType {
   syncData: (force?: boolean) => Promise<SyncResult>;
   syncToast: string | null;
   dismissSyncToast: () => void;
+  restartApp: (message?: string) => void;
   // Native Engine Updates
   updateInfo: UpdateInfo | null;
   showUpdateModal: boolean;
@@ -66,7 +68,10 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const FAVORITES_KEY = "@filmx_favorites_v1";
 const HISTORY_KEY = "@filmx_watch_history_v1";
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{
+  children: React.ReactNode;
+  onAppRestart?: (message?: string) => void;
+}> = ({ children, onAppRestart }) => {
   const [favorites, setFavorites] = useState<MediaItem[]>([]);
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
@@ -156,8 +161,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const restartApp = useCallback((customMsg?: string) => {
+    setDataVersion((v) => v + 1);
+    const msg = customMsg || "✨ GitHub yangilanishlari to'liq o'rnatildi! Ilova yangilandi.";
+    setSyncToast(msg);
+    setTimeout(() => setSyncToast(null), 5000);
+    if (onAppRestart) {
+      onAppRestart(msg);
+    }
+  }, [onAppRestart]);
+
+  useEffect(() => {
+    const unregister = registerAppRestarter(restartApp);
+    return unregister;
+  }, [restartApp]);
+
   const syncData = async (force = false): Promise<SyncResult> => {
-    return await syncRemoteMediaData(force);
+    const result = await syncRemoteMediaData(force);
+    if (result.updated && result.newItemsCount > 0) {
+      restartApp(`✨ +${result.newItemsCount} ta yangi kino va seriallar o'rnatildi!`);
+    }
+    return result;
   };
 
   const dismissSyncToast = () => setSyncToast(null);
@@ -332,6 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncData,
         syncToast,
         dismissSyncToast,
+        restartApp,
         updateInfo,
         showUpdateModal,
         setShowUpdateModal,

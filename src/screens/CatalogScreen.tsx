@@ -30,13 +30,15 @@ const GENRE_FILTERS = [
   { label: "Barcha Janrlar", value: "all" },
   { label: "💥 Jangari", value: "jangari" },
   { label: "🚀 Fantastika", value: "fantastika" },
+  { label: "🎭 Dorama", value: "dorama" },
+  { label: "🐱‍🏍 Multfilm & Anime", value: "multfilm" },
   { label: "🎭 Drama", value: "drama" },
   { label: "⚡ Triller", value: "triller" },
   { label: "🗺️ Sarguzasht", value: "sarguzasht" },
   { label: "😂 Komediya", value: "komediya" },
-  { label: "👻 Qo\x27rqinchli", value: "qorqinchli" },
-  { label: "🐱‍🏍 Animatsiya", value: "animatsiya" },
+  { label: "👻 Qo'rqinchli", value: "qorqinchli" },
   { label: "🥋 Melodrama", value: "melodrama" },
+  { label: "⚔️ Tarixiy", value: "tarixiy" },
 ];
 
 const COUNTRY_FILTERS = [
