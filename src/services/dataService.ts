@@ -10,6 +10,17 @@ let cachedSeries: Series[] = [];
 let cachedAll: MediaItem[] = [];
 let mediaMap = new Map<string, MediaItem>();
 
+// Pre-computed collections for instant 60fps rendering without jank
+let cachedFeatured: MediaItem[] = [];
+let cachedMultfilms: MediaItem[] = [];
+let cachedDoramas: MediaItem[] = [];
+let cachedPremieres: MediaItem[] = [];
+let cachedTopRated: MediaItem[] = [];
+let cachedTrendingSeries: Series[] = [];
+let cachedLatestMovies: Movie[] = [];
+let cachedHind: MediaItem[] = [];
+let cachedThrillers: MediaItem[] = [];
+
 function initData() {
   if (cachedAll.length > 0) return;
 
@@ -33,6 +44,56 @@ function initData() {
   cachedAll.forEach((item) => {
     mediaMap.set(item.id, item);
   });
+
+  // Pre-calculate all sections once to ensure 0ms render times
+  cachedTrendingSeries = cachedSeries.slice(0, 12);
+  cachedLatestMovies = cachedMovies.slice(0, 14);
+
+  cachedFeatured = cachedAll.filter((item) => (item.rating || 0) >= 8.5).slice(0, 10);
+
+  cachedTopRated = [...cachedAll]
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+    .slice(0, 12);
+
+  cachedMultfilms = cachedAll
+    .filter(
+      (item) =>
+        item.genres?.some((g) => {
+          const lg = g.toLowerCase();
+          return lg.includes('mult') || lg.includes('anim') || lg.includes('anime');
+        }) ||
+        item.title.toLowerCase().includes('multfilm') ||
+        item.title.toLowerCase().includes('anime')
+    )
+    .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
+    .slice(0, 12);
+
+  cachedDoramas = cachedAll
+    .filter(
+      (item) =>
+        item.genres?.some((g) => g.toLowerCase().includes('dorama') || g.toLowerCase().includes('koreys')) ||
+        (item.type === 'series' && item.country?.toLowerCase().includes('koreya')) ||
+        item.title.toLowerCase().includes('dorama')
+    )
+    .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
+    .slice(0, 12);
+
+  cachedPremieres = cachedAll
+    .filter((item) => item.year >= 2024)
+    .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
+    .slice(0, 12);
+
+  cachedHind = cachedMovies
+    .filter(
+      (m) =>
+        m.country?.toLowerCase().includes('hind') ||
+        m.genres?.some((g) => g.toLowerCase().includes('hind'))
+    )
+    .slice(0, 10);
+
+  cachedThrillers = cachedAll
+    .filter((m) => m.genres?.some((g) => g.toLowerCase().includes('triller')))
+    .slice(0, 10);
 }
 
 initData();
@@ -59,31 +120,47 @@ export function getMediaById(id: string): MediaItem | undefined {
 
 export function getFeaturedMedia(): MediaItem[] {
   initData();
-  return cachedAll.filter((item) => (item.rating || 0) >= 8.5).slice(0, 10);
+  return cachedFeatured;
 }
 
 export function getMultfilms(): MediaItem[] {
   initData();
-  return cachedAll.filter((item) =>
-    item.genres?.some((g) => {
-      const lg = g.toLowerCase();
-      return lg.includes('mult') || lg.includes('anim') || lg.includes('anime');
-    }) || item.title.toLowerCase().includes('multfilm') || item.title.toLowerCase().includes('anime')
-  ).sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0));
+  return cachedMultfilms;
 }
 
 export function getDoramas(): MediaItem[] {
   initData();
-  return cachedAll.filter((item) =>
-    item.genres?.some((g) => g.toLowerCase().includes('dorama') || g.toLowerCase().includes('koreys')) ||
-    (item.type === 'series' && item.country?.toLowerCase().includes('koreya')) ||
-    item.title.toLowerCase().includes('dorama')
-  ).sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0));
+  return cachedDoramas;
 }
 
 export function getLatestPremieres(): MediaItem[] {
   initData();
-  return cachedAll.filter((item) => item.year >= 2024).sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0));
+  return cachedPremieres;
+}
+
+export function getTopRatedMedia(): MediaItem[] {
+  initData();
+  return cachedTopRated;
+}
+
+export function getTrendingSeries(): Series[] {
+  initData();
+  return cachedTrendingSeries;
+}
+
+export function getLatestMovies(): Movie[] {
+  initData();
+  return cachedLatestMovies;
+}
+
+export function getHindMovies(): MediaItem[] {
+  initData();
+  return cachedHind;
+}
+
+export function getThrillers(): MediaItem[] {
+  initData();
+  return cachedThrillers;
 }
 
 export interface FilterOptions {

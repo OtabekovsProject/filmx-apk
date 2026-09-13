@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,6 +7,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { getMediaById, getMovies, getSeries } from '../services/dataService';
 import { EpisodeSelector } from '../components/EpisodeSelector';
 import { MediaCard } from '../components/MediaCard';
+import { DownloadModal } from '../components/DownloadModal';
 import { useApp } from '../context/AppContext';
 import { Series } from '../types';
 
@@ -18,10 +19,12 @@ export const DetailScreen: React.FC = () => {
   const { id } = route.params;
 
   const item = useMemo(() => getMediaById(id), [id]);
-  const { isFavorite, toggleFavorite } = useApp();
+  const { isFavorite, toggleFavorite, getDownload } = useApp();
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   const isSeries = item?.type === 'series';
   const favorite = item ? isFavorite(item.id) : false;
+  const itemDownload = item ? getDownload(item.id) : undefined;
 
   const related = useMemo(() => {
     if (!item) return [];
@@ -111,17 +114,38 @@ export const DetailScreen: React.FC = () => {
             )}
           </View>
 
-          {/* Play CTA Button */}
-          <TouchableOpacity
-            style={styles.mainPlayBtn}
-            onPress={() => navigation.navigate('Player', { id: item.id })}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="play" size={20} color="#fff" />
-            <Text style={styles.mainPlayBtnText}>
-              {isSeries ? 'Serialni tomosha qilish' : 'Filmni tomosha qilish'}
-            </Text>
-          </TouchableOpacity>
+          {/* Action Buttons Row: Play and Download */}
+          <View style={styles.actionBtnRow}>
+            <TouchableOpacity
+              style={styles.mainPlayBtn}
+              onPress={() => navigation.navigate('Player', { id: item.id })}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="play" size={20} color="#fff" />
+              <Text style={styles.mainPlayBtnText}>
+                {isSeries ? 'Serialni ko\'rish' : 'Filmni ko\'rish'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.downloadBtn, itemDownload && styles.activeDownloadBtn]}
+              onPress={() => setShowDownloadModal(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons
+                name={itemDownload ? (itemDownload.target === 'server' ? 'cloud-done' : 'checkmark-circle') : 'download-outline'}
+                size={20}
+                color={itemDownload ? '#00f2fe' : '#ffffff'}
+              />
+              <Text style={[styles.downloadBtnText, itemDownload && styles.activeDownloadBtnText]}>
+                {itemDownload
+                  ? itemDownload.target === 'server'
+                    ? 'Serverda'
+                    : 'Yuklangan'
+                  : 'Yuklab olish'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Description */}
           <View style={styles.infoSection}>
@@ -164,6 +188,16 @@ export const DetailScreen: React.FC = () => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Download Modal */}
+      <DownloadModal
+        visible={showDownloadModal}
+        item={item}
+        onClose={() => setShowDownloadModal(false)}
+        onPlayOffline={(localUri) => {
+          navigation.navigate('Player', { id: item.id, offlineUri: localUri });
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -311,16 +345,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+    marginBottom: 20,
+  },
   mainPlayBtn: {
+    flex: 1.3,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: '#e50914',
     paddingVertical: 14,
     borderRadius: 12,
-    marginTop: 14,
-    marginBottom: 20,
     shadowColor: '#e50914',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
@@ -329,8 +369,32 @@ const styles = StyleSheet.create({
   },
   mainPlayBtnText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
+  },
+  downloadBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#131826',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  activeDownloadBtn: {
+    backgroundColor: 'rgba(0, 242, 254, 0.12)',
+    borderColor: 'rgba(0, 242, 254, 0.4)',
+  },
+  downloadBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  activeDownloadBtnText: {
+    color: '#00f2fe',
   },
   infoSection: {
     marginBottom: 16,

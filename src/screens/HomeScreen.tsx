@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,13 +8,17 @@ import { HeroSlider } from '../components/HeroSlider';
 import { ContinueWatching } from '../components/ContinueWatching';
 import { MediaCard } from '../components/MediaCard';
 import { 
-  getMovies, 
-  getSeries, 
   getFeaturedMedia, 
   getMultfilms, 
   getDoramas, 
-  getLatestPremieres 
+  getLatestPremieres,
+  getTopRatedMedia,
+  getTrendingSeries,
+  getLatestMovies,
+  getHindMovies,
+  getThrillers,
 } from '../services/dataService';
+import { MediaItem } from '../types';
 
 const QUICK_CATEGORIES = [
   { name: '🔥 Seriallar', type: 'series' },
@@ -30,32 +34,93 @@ const QUICK_CATEGORIES = [
   { name: '🥋 Koreya', genre: 'koreya' },
 ];
 
+interface MediaSectionProps {
+  title: string;
+  indicatorColor: string;
+  items: MediaItem[];
+  moreText?: string;
+  onMorePress?: () => void;
+}
+
+const MediaSection: React.FC<MediaSectionProps> = React.memo(({
+  title,
+  indicatorColor,
+  items,
+  moreText,
+  onMorePress,
+}) => {
+  const renderItem = useCallback(({ item }: { item: MediaItem }) => (
+    <MediaCard item={item} variant="carousel" />
+  ), []);
+
+  const keyExtractor = useCallback((item: MediaItem) => item.id, []);
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleWrap}>
+          <View style={[styles.indicator, { backgroundColor: indicatorColor }]} />
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
+        {onMorePress && (
+          <TouchableOpacity onPress={onMorePress} style={styles.moreBtn}>
+            <Text style={styles.moreText}>{moreText || 'Barchasi'}</Text>
+            <Ionicons name="chevron-forward" size={14} color="#e50914" />
+          </TouchableOpacity>
+        )}
+      </View>
+      <FlatList
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.hScroll}
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        windowSize={3}
+        removeClippedSubviews={true}
+        getItemLayout={(_, index) => ({
+          length: 152,
+          offset: 152 * index,
+          index,
+        })}
+      />
+    </View>
+  );
+});
+
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const movies = useMemo(() => getMovies(), []);
-  const series = useMemo(() => getSeries(), []);
-  const featured = useMemo(() => getFeaturedMedia(), []);
-  const multfilms = useMemo(() => getMultfilms(), []);
-  const doramas = useMemo(() => getDoramas(), []);
-  const latestPremieres = useMemo(() => getLatestPremieres(), []);
+  const [loadBelowFold, setLoadBelowFold] = useState(false);
 
-  const trendingSeries = series.slice(0, 10);
-  const latestMovies = movies.slice(0, 12);
-  const topRated = [...movies, ...series]
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-    .slice(0, 10);
-  const topMultfilms = multfilms.slice(0, 10);
-  const topDoramas = doramas.slice(0, 10);
-  const topPremieres = latestPremieres.slice(0, 10);
-  const hindMovies = movies.filter(m => m.country?.toLowerCase().includes('hind') || m.genres?.some(g => g.toLowerCase().includes('hind'))).slice(0, 8);
-  const thrillers = [...movies, ...series].filter(m => m.genres?.some(g => g.toLowerCase().includes('triller'))).slice(0, 8);
+  // Staggered load to ensure instant 60fps initial paint without jank
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadBelowFold(true);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Precomputed O(1) instant collections
+  const featured = useMemo(() => getFeaturedMedia(), []);
+  const trendingSeries = useMemo(() => getTrendingSeries(), []);
+  const topMultfilms = useMemo(() => getMultfilms(), []);
+  const topDoramas = useMemo(() => getDoramas(), []);
+  const topPremieres = useMemo(() => getLatestPremieres(), []);
+  const latestMovies = useMemo(() => getLatestMovies(), []);
+  const topRated = useMemo(() => getTopRatedMedia(), []);
+  const hindMovies = useMemo(() => getHindMovies(), []);
+  const thrillers = useMemo(() => getThrillers(), []);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Header />
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Featured Hero Slider */}
-        <HeroSlider items={featured.length > 0 ? featured : series.slice(0, 5)} />
+        <HeroSlider items={featured.length > 0 ? featured : trendingSeries.slice(0, 5)} />
 
         {/* Continue Watching */}
         <ContinueWatching />
@@ -83,203 +148,94 @@ export const HomeScreen: React.FC = () => {
         </ScrollView>
 
         {/* Section 1: Mashhur Seriallar */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleWrap}>
-              <View style={[styles.indicator, { backgroundColor: '#8b5cf6' }]} />
-              <Text style={styles.sectionTitle}>📺 Seriallar — Barcha Qismlar</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { type: 'series' } })}
-              style={styles.moreBtn}
-            >
-              <Text style={styles.moreText}>Barchasi ({series.length})</Text>
-              <Ionicons name="chevron-forward" size={14} color="#e50914" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {trendingSeries.map((item) => (
-              <MediaCard key={item.id} item={item} variant="carousel" />
-            ))}
-          </ScrollView>
-        </View>
+        <MediaSection
+          title="📺 Seriallar — Barcha Qismlar"
+          indicatorColor="#8b5cf6"
+          items={trendingSeries}
+          moreText="Barchasi"
+          onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { type: 'series' } })}
+        />
 
         {/* Section 2: Multfilmlar & Animatsiya */}
-        {topMultfilms.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <View style={[styles.indicator, { backgroundColor: '#f59e0b' }]} />
-                <Text style={styles.sectionTitle}>🐱‍🏍 Multfilmlar & Animatsiya</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'multfilm' } })}
-                style={styles.moreBtn}
-              >
-                <Text style={styles.moreText}>Barchasi ({multfilms.length})</Text>
-                <Ionicons name="chevron-forward" size={14} color="#e50914" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {topMultfilms.map((item) => (
-                <MediaCard key={item.id} item={item} variant="carousel" />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        <MediaSection
+          title="🐱‍🏍 Multfilmlar & Animatsiya"
+          indicatorColor="#f59e0b"
+          items={topMultfilms}
+          moreText="Barchasi"
+          onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'multfilm' } })}
+        />
 
         {/* Section 3: Doramalar & Sharq Seriallari */}
-        {topDoramas.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <View style={[styles.indicator, { backgroundColor: '#ec4899' }]} />
-                <Text style={styles.sectionTitle}>🎭 Dorama & Sharq Seriallari</Text>
+        <MediaSection
+          title="🎭 Dorama & Sharq Seriallari"
+          indicatorColor="#ec4899"
+          items={topDoramas}
+          moreText="Barchasi"
+          onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'dorama' } })}
+        />
+
+        {/* Below-the-fold sections loaded smoothly */}
+        {loadBelowFold && (
+          <>
+            {/* Section 4: 2024-2026 Premyeralar */}
+            <MediaSection
+              title="⚡ 2024-2026 Yangi Premyeralar"
+              indicatorColor="#10b981"
+              items={topPremieres}
+              moreText="Barchasi"
+              onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { year: '2025' } })}
+            />
+
+            {/* Section 5: So'nggi Premyera Kinolar */}
+            <MediaSection
+              title="🎬 So'nggi Premyera Kinolar"
+              indicatorColor="#00f2fe"
+              items={latestMovies}
+              moreText="Barchasi"
+              onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { type: 'movie' } })}
+            />
+
+            {/* Section 6: Eng Yuqori Baholanganlar */}
+            <MediaSection
+              title="⭐ Eng Yuqori Reytingli"
+              indicatorColor="#ffb703"
+              items={topRated}
+              moreText="Barchasi"
+              onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { sort: 'rating' } })}
+            />
+
+            {/* Section 7: Hind Kinolari */}
+            <MediaSection
+              title="🌟 Hind Kinolari"
+              indicatorColor="#f59e0b"
+              items={hindMovies}
+              moreText="Barchasi"
+              onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'hind' } })}
+            />
+
+            {/* Section 8: Thrillers */}
+            <MediaSection
+              title="🔪 Shiddatli Trillerlar"
+              indicatorColor="#ef4444"
+              items={thrillers}
+              moreText="Barchasi"
+              onMorePress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'triller' } })}
+            />
+
+            {/* Presentation Banner */}
+            <View style={styles.banner}>
+              <View style={styles.bannerBadge}>
+                <Text style={styles.bannerBadgeText}>1,170+ KINO · 300+ SERIAL · 5,000+ QISM · 1080P FHD</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'dorama' } })}
-                style={styles.moreBtn}
-              >
-                <Text style={styles.moreText}>Barchasi ({doramas.length})</Text>
-                <Ionicons name="chevron-forward" size={14} color="#e50914" />
-              </TouchableOpacity>
+              <Text style={styles.bannerTitle}>
+                FilmX — O'zbek tilidagi kinolar, seriallar va multfilmlar olami
+              </Text>
+              <Text style={styles.bannerDesc}>
+                Reklamasiz, yuqori Tas-ix tezlikda multfilmlar, seriallar, doramalar va barcha yangi premyeralarni tomosha qiling.
+              </Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {topDoramas.map((item) => (
-                <MediaCard key={item.id} item={item} variant="carousel" />
-              ))}
-            </ScrollView>
-          </View>
+          </>
         )}
-
-        {/* Section 4: 2024-2026 Premyeralar */}
-        {topPremieres.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <View style={[styles.indicator, { backgroundColor: '#10b981' }]} />
-                <Text style={styles.sectionTitle}>⚡ 2024-2026 Yangi Premyeralar</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { year: '2025' } })}
-                style={styles.moreBtn}
-              >
-                <Text style={styles.moreText}>Barchasi ({latestPremieres.length})</Text>
-                <Ionicons name="chevron-forward" size={14} color="#e50914" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {topPremieres.map((item) => (
-                <MediaCard key={item.id} item={item} variant="carousel" />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Section 5: So'nggi Premyera Kinolar */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleWrap}>
-              <View style={[styles.indicator, { backgroundColor: '#00f2fe' }]} />
-              <Text style={styles.sectionTitle}>🎬 So'nggi Premyera Kinolar</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { type: 'movie' } })}
-              style={styles.moreBtn}
-            >
-              <Text style={styles.moreText}>Barchasi</Text>
-              <Ionicons name="chevron-forward" size={14} color="#e50914" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {latestMovies.map((item) => (
-              <MediaCard key={item.id} item={item} variant="carousel" />
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Section 6: Eng Yuqori Baholanganlar */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleWrap}>
-              <View style={[styles.indicator, { backgroundColor: '#ffb703' }]} />
-              <Text style={styles.sectionTitle}>⭐ Eng Yuqori Reytingli</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { sort: 'rating' } })}
-              style={styles.moreBtn}
-            >
-              <Text style={styles.moreText}>Barchasi</Text>
-              <Ionicons name="chevron-forward" size={14} color="#e50914" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {topRated.map((item) => (
-              <MediaCard key={item.id} item={item} variant="carousel" />
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Section 7: Hind Kinolari */}
-        {hindMovies.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <View style={[styles.indicator, { backgroundColor: '#f59e0b' }]} />
-                <Text style={styles.sectionTitle}>🌟 Hind Kinolari</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'hind' } })}
-                style={styles.moreBtn}
-              >
-                <Text style={styles.moreText}>Barchasi</Text>
-                <Ionicons name="chevron-forward" size={14} color="#e50914" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {hindMovies.map((item) => (
-                <MediaCard key={item.id} item={item} variant="carousel" />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Section 8: Thrillers */}
-        {thrillers.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <View style={[styles.indicator, { backgroundColor: '#ef4444' }]} />
-                <Text style={styles.sectionTitle}>🔪 Shiddatli Trillerlar</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CatalogTab', { screen: 'Catalog', params: { genre: 'triller' } })}
-                style={styles.moreBtn}
-              >
-                <Text style={styles.moreText}>Barchasi</Text>
-                <Ionicons name="chevron-forward" size={14} color="#e50914" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {thrillers.map((item) => (
-                <MediaCard key={item.id} item={item} variant="carousel" />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Presentation Banner */}
-        <View style={styles.banner}>
-          <View style={styles.bannerBadge}>
-            <Text style={styles.bannerBadgeText}>1,170+ KINO · 300+ SERIAL · 5,000+ QISM · 1080P FHD</Text>
-          </View>
-          <Text style={styles.bannerTitle}>
-            FilmX — O'zbek tilidagi kinolar, seriallar va multfilmlar olami
-          </Text>
-          <Text style={styles.bannerDesc}>
-            Reklamasiz, yuqori Tas-ix tezlikda multfilmlar, seriallar, doramalar va barcha yangi premyeralarni tomosha qiling.
-          </Text>
-        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>

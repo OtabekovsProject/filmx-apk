@@ -1,9 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MediaItem, WatchHistoryItem } from '../types';
+import { MediaItem, WatchHistoryItem, DownloadItem, DownloadTarget, Episode } from '../types';
 import { checkAppUpdate, UpdateInfo } from '../services/updateService';
+import {
+  getStoredDownloads,
+  saveToServerLibrary,
+  startGalleryDownload as serviceStartGallery,
+  deleteDownload as serviceDeleteDownload,
+  cancelDownload as serviceCancelDownload,
+  generateDownloadId,
+} from '../services/downloadService';
 
-const APP_VERSION = '1.4.3';
+const APP_VERSION = '1.5.0';
 
 interface AppContextType {
   favorites: MediaItem[];
@@ -21,6 +29,18 @@ interface AppContextType {
   removeHistoryItem: (id: string) => void;
   clearHistory: () => void;
   isWatched: (id: string) => boolean;
+  // Downloads
+  downloads: DownloadItem[];
+  downloadMovie: (
+    item: MediaItem,
+    target: DownloadTarget,
+    episode?: Episode,
+    onProgress?: (prog: number, dMB: number, tMB: number) => void
+  ) => Promise<DownloadItem>;
+  removeDownload: (id: string) => Promise<void>;
+  cancelActiveDownload: (id: string) => Promise<void>;
+  getDownload: (mediaId: string, episodeId?: string) => DownloadItem | undefined;
+  refreshDownloads: () => Promise<void>;
   // Network connectivity status
   isOffline: boolean;
   isRestored: boolean;
@@ -39,6 +59,7 @@ const HISTORY_KEY = '@filmx_watch_history_v1';
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [favorites, setFavorites] = useState<MediaItem[]>([]);
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
 
   // Network State
   const [isOffline, setIsOffline] = useState(false);
@@ -50,34 +71,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   useEffect(() => {
+    // Initial fast background loads
     loadStorage();
-    checkUpdates();
+    refreshDownloads();
 
-    // Check internet connection initially and every 10 seconds
-    checkConnectivity();
-    const netInterval = setInterval(checkConnectivity, 10000);
+    // Check updates after a small idle pause
+    const updateTimeout = setTimeout(() => {
+      checkUpdates();
+    }, 1200);
 
-    return () => clearInterval(netInterval);
+    // Lightweight network check every 25 seconds (less frequent to avoid noise)
+    const netInterval = setInterval(checkConnectivity, 25000);
+
+    return () => {
+      clearTimeout(updateTimeout);
+      clearInterval(netInterval);
+    };
   }, []);
 
   const checkConnectivity = async () => {
     try {
-      // Fast lightweight HEAD/ping to reliable CDN
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', {
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      // Fast lightweight ping
+      await fetch('https://raw.githubusercontent.com/favicon.ico', {
         method: 'HEAD',
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
       if (wasOfflineRef.current) {
-        // Connection just got restored!
         wasOfflineRef.current = false;
         setIsOffline(false);
         setIsRestored(true);
-        setTimeout(() => setIsRestored(false), 3500);
-      } else {
+        setTimeout(() => setIsRestored(false), 3000);
+      } else if (isOffline) {
         setIsOffline(false);
       }
     } catch (e) {
@@ -112,6 +140,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const refreshDownloads = async () => {
+    try {
+      const stored = await getStoredDownloads();
+      setDownloads(stored);
+    } catch (e) {
+      console.error('Failed to refresh downloads', e);
+    }
+  };
+
+  const downloadMovie = async (
+    item: MediaItem,
+    target: DownloadTarget,
+    episode?: Episode,
+    onProgress?: (prog: number, dMB: number, tMB: number) => void
+  ): Promise<DownloadItem> => {
+    if (target === 'server') {
+      const result = await saveToServerLibrary(item, episode);
+      await refreshDownloads();
+      return result;
+    } else {
+      try {
+        const resultPromise = serviceStartGallery(item, episode, onProgress);
+        // Refresh immediate downloading status
+        setTimeout(refreshDownloads, 300);
+        const res = await resultPromise;
+        await refreshDownloads();
+        return res;
+      } catch (err) {
+        await refreshDownloads();
+        throw err;
+      }
+    }
+  };
+
+  const removeDownload = async (id: string) => {
+    await serviceDeleteDownload(id);
+    await refreshDownloads();
+  };
+
+  const cancelActiveDownload = async (id: string) => {
+    await serviceCancelDownload(id);
+    await refreshDownloads();
+  };
+
+  const getDownload = useCallback((mediaId: string, episodeId?: string): DownloadItem | undefined => {
+    const targetId = generateDownloadId(mediaId, episodeId);
+    return downloads.find((d) => d.id === targetId);
+  }, [downloads]);
+
   const toggleFavorite = async (item: MediaItem) => {
     try {
       const exists = favorites.some((fav) => fav.id === item.id);
@@ -128,9 +205,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const isFavorite = (id: string): boolean => {
+  const isFavorite = useCallback((id: string): boolean => {
     return favorites.some((fav) => fav.id === id);
-  };
+  }, [favorites]);
 
   const recordProgress = async (
     item: MediaItem,
@@ -195,6 +272,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeHistoryItem,
         clearHistory,
         isWatched,
+        downloads,
+        downloadMovie,
+        removeDownload,
+        cancelActiveDownload,
+        getDownload,
+        refreshDownloads,
         isOffline,
         isRestored,
         updateInfo,

@@ -18,6 +18,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { getMediaById } from '../services/dataService';
 import { useApp } from '../context/AppContext';
 import { Series, Episode } from '../types';
+import { DownloadModal } from '../components/DownloadModal';
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const SLEEP_TIMERS = [15, 30, 45, 60];
@@ -25,6 +26,11 @@ const SLEEP_TIMERS = [15, 30, 45, 60];
 function optimizeVideoUrl(rawUrl?: string): string {
   if (!rawUrl) return '';
   let url = rawUrl.trim();
+
+  // If local file, return as is
+  if (url.startsWith('file://')) {
+    return url;
+  }
 
   // Route directly to storage subdomain, avoiding 3-4s HTTP 301 redirect roundtrips
   url = url.replace(/^https?:\/\/fayllar1\.ru\/(\d+)\//i, 'https://$1.fayllar1.ru/$1/');
@@ -57,11 +63,12 @@ function optimizeVideoUrl(rawUrl?: string): string {
 export const PlayerScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { id, episodeId } = route.params;
+  const { id, episodeId, offlineUri } = route.params;
   const { width, height } = useWindowDimensions();
 
   const item = useMemo(() => getMediaById(id), [id]);
-  const { recordProgress } = useApp();
+  const { recordProgress, getDownload } = useApp();
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   const videoRef = useRef<Video>(null);
   const isSeries = item?.type === 'series';
@@ -111,8 +118,15 @@ export const PlayerScreen: React.FC = () => {
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lockPromptTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Check if we have an offline local download
+  const currentDownload = getDownload(id, currentEpisode?.id);
+  const localOfflineFile = offlineUri || currentDownload?.localUri;
+
   // Determine current video URL
   const rawVideoUrl = useMemo(() => {
+    if (localOfflineFile) {
+      return localOfflineFile;
+    }
     if (isSeries && currentEpisode?.videoUrl) {
       return currentEpisode.videoUrl;
     }
@@ -120,7 +134,7 @@ export const PlayerScreen: React.FC = () => {
       return item.videoUrl;
     }
     return '';
-  }, [item, isSeries, currentEpisode]);
+  }, [item, isSeries, currentEpisode, localOfflineFile]);
 
   const videoUrl = useMemo(() => {
     return optimizeVideoUrl(rawVideoUrl);
@@ -564,6 +578,23 @@ export const PlayerScreen: React.FC = () => {
                 <Text style={styles.pillActionText}>O'lcham</Text>
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.pillActionBtn}
+                onPress={() => {
+                  scheduleControlsHide();
+                  setShowDownloadModal(true);
+                }}
+              >
+                <Ionicons
+                  name={currentDownload ? (currentDownload.target === 'server' ? 'cloud-done' : 'checkmark-circle') : 'download-outline'}
+                  size={15}
+                  color={currentDownload ? '#10b981' : '#00f2fe'}
+                />
+                <Text style={[styles.pillActionText, currentDownload && { color: '#10b981' }]}>
+                  {currentDownload ? (currentDownload.target === 'server' ? 'Serverda' : 'Yuklangan') : 'Yuklash'}
+                </Text>
+              </TouchableOpacity>
+
               {isSeries && (
                 <TouchableOpacity
                   style={styles.episodesToggle}
@@ -816,6 +847,16 @@ export const PlayerScreen: React.FC = () => {
             </View>
           </TouchableOpacity>
         </Modal>
+      )}
+
+      {/* In-Player Download Modal */}
+      {item && (
+        <DownloadModal
+          visible={showDownloadModal}
+          item={item}
+          initialEpisodeId={currentEpisode?.id}
+          onClose={() => setShowDownloadModal(false)}
+        />
       )}
     </View>
   );

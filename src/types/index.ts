@@ -55,3 +55,23 @@ export interface WatchHistoryItem {
   episodeTitle?: string;
   updatedAt: number;
 }
+
+export type DownloadTarget = 'gallery' | 'server';
+
+export interface DownloadItem {
+  id: string; // unique download id (e.g. movieId or movieId_episodeId)
+  mediaId: string;
+  item: MediaItem;
+  target: DownloadTarget; // 'gallery' = internal device storage, 'server' = cloud server library (0 MB on phone)
+  episodeId?: string;
+  episodeTitle?: string;
+  videoUrl: string;
+  localUri?: string; // only if target === 'gallery' and completed
+  status: 'pending' | 'downloading' | 'completed' | 'error';
+  progress: number; // 0 to 1
+  downloadedBytes: number;
+  totalBytes: number;
+  createdAt: number;
+  completedAt?: number;
+  errorMessage?: string;
+}

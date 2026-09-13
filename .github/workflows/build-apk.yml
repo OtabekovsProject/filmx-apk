@@ -58,18 +58,20 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
         with:
-          tag_name: v1.4.3
-          name: "FilmX Android APK v1.4.3 — Tezkor Pleyer, Qorong'i Splash & Avto-Yangilanish"
+          tag_name: v1.5.0
+          name: "FilmX Android APK v1.5.0 — Darhol Kirish, 60FPS Optimizatsiya & Kinolarni Yuklab Olish (Galereya/Server)"
           body: |
-            ## 🎬 FilmX Mobile v1.4.3
+            ## 🎬 FilmX Mobile v1.5.0
             O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
 
-            ### 🚀 v1.4.3 Yangiliklari:
-            - ⚡ **Kinoni tezkor ochish**: Maxsus URL encoder va optimallashtirilgan ExoPlayer buferi orqali kinolar va seriallar kechikishlarsiz darhol o'ynatiladi.
-            - 🎨 **Yangi Qorong'i Splash Screen**: Oq ekran chaqnashi butunlay yo'qotildi! Ilova to'q binafsha/qora (#070a12) fon va rasmiy FilmX logotipi bilan ochiladi.
-            - 🔄 **Avtomatik Yangilanish (In-App GitHub Updates)**: Telefondagi ilovangiz GitHub-dagi yangi relizlarni avtomatik aniqlaydi va bir tugma bilan to'g'ridan-to'g'ri yangilaydi.
-            - 📡 **Internet Holati Xabarnomasi**: Aloqa uzilganda va qayta tiklanganda tepadagi animatsiyali banner orqali xabar beradi.
-            - 📺 **Kengaytirilgan Fullscreen Pleyer**: Ekran burish (landscape), nisbatlar (Cover/Contain/Stretch), ekranni qulflash.
+            ### 🚀 v1.5.0 Yangiliklari:
+            - ⚡ **Kirishdagi loading butunlay olib tashlandi**: Ilova hech qanday kutishlarsiz, sun'iy kechikishlarsiz darhol bir zumda ochiladi!
+            - 🎯 **Asosiy Sahifaning 60FPS Optimizatsiyasi**: Sahifadagi barcha qotishlar (lag/jank) butunlay yo'qotildi. 1,500+ kinolar ro'yxati statik keshlandi va yengil `MediaSection` gorizontal `FlatList` joriy etildi.
+            - 📥 **Kinolarni Yuklab Olish Funksiyasi (Galereyaga & Serverga)**:
+              - 💾 **Galereyaga (Qurilma xotirasiga)**: Video to'liq telefon xotirasiga yuklanadi va oflayn tomosha qilish yoki galereyada ochish/ulashish imkoniyati beriladi.
+              - ☁️ **Serverga yuklash (0 MB telefon xotirasi)**: Telefoningiz xotirasidan 0 bayt joy olmasdan kino shaxsiy server ro'yxatingizga yuklanadi va istalgan vaqt yuqori tezlikda ochiladi!
+            - 📂 **Yuklanganlar Boshqaruvi**: "Sevimlilar" bo'limida "Yuklanganlar" qismi (Qurilmada & Serverda) qo'shildi. Oflayn o'ynatish, galereyada ochish va o'chirish imkoniyatlari mavjud.
+            - 🎬 **Pleyerdan To'g'ridan-to'g'ri Yuklash**: Tomosha qilish davomida pleyer menyusidan filmni yuklab olish imkoniyati.
 
             ### ✨ Qo'shimcha Imkoniyatlar:
             - ⚡ **60fps Yengil va Tezkor**: Silliq animatsiyalar va qotmasdan ishlash
@@ -79,7 +81,6 @@ jobs:
             - 🎬 **Zamonaviy Video Pleyer**: 10s oldinga/orqaga, tezlikni sozlash (0.75x - 2x), sifat, uyqu taymeri
             - 🔁 **Seriallar Avto-ijrosi**: 5 soniyalik hisoblagich bilan avtomatik keyingi qismga o'tish
             - ❤️ **Sevimlilar va Tarix**: Ko'rilgan daqiqasidan avtomatik davom ettirish
-            - 🔍 **Tezkor Filtr va Qidiruv**: Janr, davlat, yil va reyting bo'yicha saralash
 
             📥 **O'rnatish uchun pastdagi `FilmX-v1.0.apk` faylini yuklab oling!**
           files: build-output/FilmX-v1.0.apk

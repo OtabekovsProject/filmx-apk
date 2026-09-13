@@ -10,16 +10,17 @@ const { width } = Dimensions.get('window');
 interface MediaCardProps {
   item: MediaItem;
   variant?: 'grid' | 'carousel' | 'list';
+  isFav?: boolean;
 }
 
-const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid' }) => {
+const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid', isFav }) => {
   const navigation = useNavigation<any>();
   const { isFavorite, toggleFavorite } = useApp();
-  const favorite = isFavorite(item.id);
+  const favorite = isFav !== undefined ? isFav : isFavorite(item.id);
 
-  const handlePress = () => {
+  const handlePress = React.useCallback(() => {
     navigation.navigate('Detail', { id: item.id });
-  };
+  }, [navigation, item.id]);
 
   const isSeries = item.type === 'series';
 
@@ -34,6 +35,7 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid' }
           source={{ uri: item.poster }}
           style={styles.listPoster}
           resizeMode="cover"
+          fadeDuration={0}
         />
         <View style={styles.listContent}>
           <View style={styles.badgeRow}>
@@ -89,6 +91,7 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid' }
           source={{ uri: item.poster }}
           style={posterStyle}
           resizeMode="cover"
+          fadeDuration={0}
         />
         <View style={styles.posterOverlay}>
           <View style={styles.topBadges}>
@@ -134,7 +137,9 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid' }
   );
 };
 
-export const MediaCard = React.memo(MediaCardComponent);
+export const MediaCard = React.memo(MediaCardComponent, (prev, next) => {
+  return prev.item.id === next.item.id && prev.variant === next.variant && prev.isFav === next.isFav;
+});
 
 const cardWidth = (width - 44) / 2;
 
