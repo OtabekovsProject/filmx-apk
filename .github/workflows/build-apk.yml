@@ -20,8 +20,8 @@ jobs:
       - name: ☕ Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: "temurin"
+          java-version: "17"
 
       - name: 📱 Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -56,31 +56,20 @@ jobs:
 
       - name: 🚀 Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
+        if: startsWith(github.ref, "refs/heads/main") || startsWith(github.ref, "refs/heads/master")
         with:
           tag_name: v1.6.0
-          name: "FilmX Android APK v1.6.0 — Jonli Avto-Yangilanish (In-App OTA Sync), 60FPS Yuqori Tezlik & Qayta O\x27rnatish Muammosi Tuzatildi
+          name: "FilmX Android APK v1.6.0 — Jonli Avto-Yangilanish (In-App OTA Sync), 60FPS & Qotmasdan Ishlash"
           body: |
-            ## 🎬 FilmX Mobile v1.6.0
-            O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
+            ## 🎬 FilmX Mobile v1.6.0 (Yangi Nashr)
+            O'zbek tilidagi barcha tarjima kinolar, seriallar va yangi premyeralar portali!
 
-            ### 🚀 v1.5.0 Yangiliklari:
-            - ⚡ **Kirishdagi loading butunlay olib tashlandi**: Ilova hech qanday kutishlarsiz, sun'iy kechikishlarsiz darhol bir zumda ochiladi!
-            - 🎯 **Asosiy Sahifaning 60FPS Optimizatsiyasi**: Sahifadagi barcha qotishlar (lag/jank) butunlay yo'qotildi. 1,500+ kinolar ro'yxati statik keshlandi va yengil `MediaSection` gorizontal `FlatList` joriy etildi.
-            - 📥 **Kinolarni Yuklab Olish Funksiyasi (Galereyaga & Serverga)**:
-              - 💾 **Galereyaga (Qurilma xotirasiga)**: Video to'liq telefon xotirasiga yuklanadi va oflayn tomosha qilish yoki galereyada ochish/ulashish imkoniyati beriladi.
-              - ☁️ **Serverga yuklash (0 MB telefon xotirasi)**: Telefoningiz xotirasidan 0 bayt joy olmasdan kino shaxsiy server ro'yxatingizga yuklanadi va istalgan vaqt yuqori tezlikda ochiladi!
-            - 📂 **Yuklanganlar Boshqaruvi**: "Sevimlilar" bo'limida "Yuklanganlar" qismi (Qurilmada & Serverda) qo'shildi. Oflayn o'ynatish, galereyada ochish va o'chirish imkoniyatlari mavjud.
-            - 🎬 **Pleyerdan To'g'ridan-to'g'ri Yuklash**: Tomosha qilish davomida pleyer menyusidan filmni yuklab olish imkoniyati.
-
-            ### ✨ Qo'shimcha Imkoniyatlar:
-            - ⚡ **60fps Yengil va Tezkor**: Silliq animatsiyalar va qotmasdan ishlash
-            - 🎬 **1,470+ Kino, Serial, Multfilm va Doramalar (5,000+ qism)**
-            - 📺 **To'liq Ekran (Fullscreen & Landscape)**: Gorizontal burish, Asl/To'liq/Cho'zilgan o'lchamlar, 10s ikki marta bosish, Ekran qulfi
-            - 🔍 **Tuzatilgan & Kengaytirilgan Qidiruv**: So'nggi qidiruvlar tarixi, toifalar va jonli qidiruv
-            - 🎬 **Zamonaviy Video Pleyer**: 10s oldinga/orqaga, tezlikni sozlash (0.75x - 2x), sifat, uyqu taymeri
-            - 🔁 **Seriallar Avto-ijrosi**: 5 soniyalik hisoblagich bilan avtomatik keyingi qismga o'tish
-            - ❤️ **Sevimlilar va Tarix**: Ko'rilgan daqiqasidan avtomatik davom ettirish
+            ### 🚀 v1.6.0 Yangiliklari:
+            - 🔄 **Jonli Avtomatik Yangilanish (In-App OTA Data Sync)**: Saytga yangi kino yoki serial qo'shilganda, ilova fon rejimida avtomatik ravishda yangilanadi. Foydalanuvchidan hech qanday APK ni qayta o'rnatish so'ralmaydi!
+            - ⚡ **Qayta O'rnatish (PackageInstaller) Muammosi Butunlay Yo'qotildi**: Yangi filmlar chiqqanda majburiy APK yuklab olib ustiga o'rnatish oynasi olib tashlandi.
+            - 🎯 **60FPS Tezkor va Ravon Ishlash**: Katalogdagi 1,480+ kinolar va 5,000+ qismlar bir zumda ochiladi, lag va qotishlar to'liq bartaraf etildi.
+            - 🔄 **Pull-to-Refresh**: Bosh sahifa va Katalogda ekranni pastga tortish orqali yangi kinolarni tekshirish va yangilash imkoniyati.
+            - 📥 **Kinolarni Yuklab Olish (Galereyaga & Serverga)**: Telefon xotirasiga yoki shaxsiy ro'yxatga saqlab oflayn tomosha qilish.
 
             📥 **O'rnatish uchun pastdagi `FilmX-v1.0.apk` faylini yuklab oling!**
           files: build-output/FilmX-v1.0.apk
