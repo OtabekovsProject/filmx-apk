@@ -58,10 +58,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
         with:
-          tag_name: v1.5.0
-          name: "FilmX Android APK v1.5.0 — Darhol Kirish, 60FPS Optimizatsiya & Kinolarni Yuklab Olish (Galereya/Server)"
+          tag_name: v1.6.0
+          name: "FilmX Android APK v1.6.0 — Jonli Avto-Yangilanish (In-App OTA Sync), 60FPS Yuqori Tezlik & Qayta O\x27rnatish Muammosi Tuzatildi
           body: |
-            ## 🎬 FilmX Mobile v1.5.0
+            ## 🎬 FilmX Mobile v1.6.0
             O'zbek tilidagi barcha tarjima kinolar, premyeralar va yangi seriallar portali!
 
             ### 🚀 v1.5.0 Yangiliklari:

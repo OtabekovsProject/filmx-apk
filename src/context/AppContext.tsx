@@ -1,7 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MediaItem, WatchHistoryItem, DownloadItem, DownloadTarget, Episode } from '../types';
-import { checkAppUpdate, UpdateInfo } from '../services/updateService';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { MediaItem, WatchHistoryItem, DownloadItem, DownloadTarget, Episode } from "../types";
+import { checkAppUpdate, UpdateInfo } from "../services/updateService";
+import {
+  subscribeDataUpdates,
+  syncRemoteMediaData,
+  SyncResult,
+} from "../services/dataService";
 import {
   getStoredDownloads,
   saveToServerLibrary,
@@ -9,9 +14,9 @@ import {
   deleteDownload as serviceDeleteDownload,
   cancelDownload as serviceCancelDownload,
   generateDownloadId,
-} from '../services/downloadService';
+} from "../services/downloadService";
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = "1.6.0";
 
 interface AppContextType {
   favorites: MediaItem[];
@@ -44,7 +49,12 @@ interface AppContextType {
   // Network connectivity status
   isOffline: boolean;
   isRestored: boolean;
-  // In-app Auto Updates
+  // In-app Dynamic Content OTA Sync
+  dataVersion: number;
+  syncData: (force?: boolean) => Promise<SyncResult>;
+  syncToast: string | null;
+  dismissSyncToast: () => void;
+  // Native Engine Updates
   updateInfo: UpdateInfo | null;
   showUpdateModal: boolean;
   setShowUpdateModal: (show: boolean) => void;
@@ -53,20 +63,24 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FAVORITES_KEY = '@filmx_favorites_v1';
-const HISTORY_KEY = '@filmx_watch_history_v1';
+const FAVORITES_KEY = "@filmx_favorites_v1";
+const HISTORY_KEY = "@filmx_watch_history_v1";
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [favorites, setFavorites] = useState<MediaItem[]>([]);
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
 
+  // Live Data Version & In-App Sync State
+  const [dataVersion, setDataVersion] = useState(0);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
+
   // Network State
   const [isOffline, setIsOffline] = useState(false);
   const [isRestored, setIsRestored] = useState(false);
   const wasOfflineRef = useRef(false);
 
-  // Auto-Update State
+  // Auto-Update State (Only for major native engine rebuilds)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
@@ -75,16 +89,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadStorage();
     refreshDownloads();
 
-    // Check updates after a small idle pause
+    // Subscribe to live data changes (from local disk or remote sync)
+    const unsubData = subscribeDataUpdates((info) => {
+      setDataVersion((prev) => prev + 1);
+      if (info.newItemsCount > 0) {
+        setSyncToast(`⚡ +${info.newItemsCount} ta yangi kino va seriallar yangilandi!`);
+        setTimeout(() => {
+          setSyncToast((cur) => (cur?.includes(String(info.newItemsCount)) ? null : cur));
+        }, 4500);
+      }
+    });
+
+    // Automatic silent background data sync after app opens (1.5s pause to not block launch)
+    const syncTimeout = setTimeout(() => {
+      syncRemoteMediaData().catch(() => {});
+    }, 1500);
+
+    // Periodic lightweight background sync check every 5 minutes
+    const periodicSyncInterval = setInterval(() => {
+      syncRemoteMediaData().catch(() => {});
+    }, 300000);
+
+    // Check for native app updates without blocking popup
     const updateTimeout = setTimeout(() => {
       checkUpdates();
-    }, 1200);
+    }, 4000);
 
-    // Lightweight network check every 25 seconds (less frequent to avoid noise)
-    const netInterval = setInterval(checkConnectivity, 25000);
+    // Lightweight network check every 30 seconds
+    const netInterval = setInterval(checkConnectivity, 30000);
 
     return () => {
+      unsubData();
+      clearTimeout(syncTimeout);
       clearTimeout(updateTimeout);
+      clearInterval(periodicSyncInterval);
       clearInterval(netInterval);
     };
   }, []);
@@ -92,10 +130,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const checkConnectivity = async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-      // Fast lightweight ping
-      await fetch('https://raw.githubusercontent.com/favicon.ico', {
-        method: 'HEAD',
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      await fetch("https://raw.githubusercontent.com/favicon.ico", {
+        method: "HEAD",
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -105,6 +142,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsOffline(false);
         setIsRestored(true);
         setTimeout(() => setIsRestored(false), 3000);
+        // Automatically sync fresh data once internet returns
+        syncRemoteMediaData().catch(() => {});
       } else if (isOffline) {
         setIsOffline(false);
       }
@@ -117,12 +156,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const syncData = async (force = false): Promise<SyncResult> => {
+    return await syncRemoteMediaData(force);
+  };
+
+  const dismissSyncToast = () => setSyncToast(null);
+
   const checkUpdates = async () => {
     try {
       const info = await checkAppUpdate(APP_VERSION);
       if (info && info.hasUpdate) {
         setUpdateInfo(info);
-        setShowUpdateModal(true);
+        // ONLY prompt for APK reinstallation if it is a true native binary upgrade!
+        // Content updates are already seamlessly handled by syncRemoteMediaData.
+        if (info.isNativeUpgrade) {
+          setShowUpdateModal(true);
+        }
       }
     } catch (e) {}
   };
@@ -136,7 +185,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (storedFavs) setFavorites(JSON.parse(storedFavs));
       if (storedHistory) setHistory(JSON.parse(storedHistory));
     } catch (e) {
-      console.error('Failed to load storage in AppContext', e);
+      console.error("Failed to load storage in AppContext", e);
     }
   };
 
@@ -145,7 +194,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const stored = await getStoredDownloads();
       setDownloads(stored);
     } catch (e) {
-      console.error('Failed to refresh downloads', e);
+      console.error("Failed to refresh downloads", e);
     }
   };
 
@@ -155,14 +204,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     episode?: Episode,
     onProgress?: (prog: number, dMB: number, tMB: number) => void
   ): Promise<DownloadItem> => {
-    if (target === 'server') {
+    if (target === "server") {
       const result = await saveToServerLibrary(item, episode);
       await refreshDownloads();
       return result;
     } else {
       try {
         const resultPromise = serviceStartGallery(item, episode, onProgress);
-        // Refresh immediate downloading status
         setTimeout(refreshDownloads, 300);
         const res = await resultPromise;
         await refreshDownloads();
@@ -201,7 +249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setFavorites(updated);
       await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.error('Failed to toggle favorite', e);
+      console.error("Failed to toggle favorite", e);
     }
   };
 
@@ -236,7 +284,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.error('Failed to save watch history', e);
+      console.error("Failed to save watch history", e);
     }
   };
 
@@ -280,6 +328,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshDownloads,
         isOffline,
         isRestored,
+        dataVersion,
+        syncData,
+        syncToast,
+        dismissSyncToast,
         updateInfo,
         showUpdateModal,
         setShowUpdateModal,
@@ -294,7 +346,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 export const useApp = () => {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new Error("useApp must be used within an AppProvider");
   }
   return context;
 };
