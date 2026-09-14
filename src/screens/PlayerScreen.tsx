@@ -11,7 +11,7 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -23,7 +23,13 @@ import { DownloadModal } from '../components/DownloadModal';
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const SLEEP_TIMERS = [15, 30, 45, 60];
 
-function optimizeVideoUrl(rawUrl?: string): string {
+const QUALITY_OPTIONS: Array<{ label: string; value: '1080p' | '720p' | '480p'; desc: string; icon: any }> = [
+  { label: '1080p Full HD', value: '1080p', desc: 'Yuqori tiniqlik (Asl sifat)', icon: 'sparkles' },
+  { label: '720p HD (Tavsiya)', value: '720p', desc: 'Tezkor va ravon (Qotmasdan)', icon: 'film' },
+  { label: '480p Standart', value: '480p', desc: 'Eng tez, tejamkor (Mobil internet)', icon: 'flash' },
+];
+
+function optimizeVideoUrl(rawUrl?: string, selectedQuality: '1080p' | '720p' | '480p' = '720p'): string {
   if (!rawUrl) return '';
   let url = rawUrl.trim();
 
@@ -32,8 +38,22 @@ function optimizeVideoUrl(rawUrl?: string): string {
     return url;
   }
 
+  // Fix old unreachable internal IP to direct high-speed cluster
+  url = url.replace(/^https?:\/\/83\.69\.139\.204\/hdd(\d+)\//i, (match, p1) => 'https://' + p1 + '.fayllar1.ru/' + p1 + '/');
+  url = url.replace(/^https?:\/\/83\.69\.139\.204\/hdd\//i, 'https://15.fayllar1.ru/15/');
+
   // Route directly to storage subdomain, avoiding 3-4s HTTP 301 redirect roundtrips
-  url = url.replace(/^https?:\/\/fayllar1\.ru\/(\d+)\//i, 'https://$1.fayllar1.ru/$1/');
+  // Correctly captures both numeric and alphanumeric subdomains (2-1-h, 15, 11, 1-s-x, etc.)
+  url = url.replace(/^https?:\/\/fayllar1\.ru\/([^/]+)\//i, (match, p1) => 'https://' + p1 + '.fayllar1.ru/' + p1 + '/');
+
+  // Apply quality switch if stream supports standard quality naming
+  if (selectedQuality === '720p') {
+    url = url.replace(/1080p/gi, '720p');
+  } else if (selectedQuality === '480p') {
+    url = url.replace(/1080p|720p/gi, '480p');
+  } else if (selectedQuality === '1080p') {
+    url = url.replace(/720p|480p/gi, '1080p');
+  }
 
   try {
     const parsed = new URL(url);
@@ -67,7 +87,7 @@ export const PlayerScreen: React.FC = () => {
   const { width, height } = useWindowDimensions();
 
   const item = useMemo(() => getMediaById(id), [id]);
-  const { recordProgress, getDownload } = useApp();
+  const { recordProgress, getDownload, history } = useApp();
   const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   const videoRef = useRef<Video>(null);
@@ -94,12 +114,27 @@ export const PlayerScreen: React.FC = () => {
   const [retryKey, setRetryKey] = useState(0);
 
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [selectedQuality, setSelectedQuality] = useState<'1080p' | '720p' | '480p'>('720p');
+  const [showQualityModal, setShowQualityModal] = useState(false);
   const [positionMillis, setPositionMillis] = useState(0);
   const [durationMillis, setDurationMillis] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [showEpisodesModal, setShowEpisodesModal] = useState(false);
   const [showSpeedModal, setShowSpeedModal] = useState(false);
   const [showTimerModal, setShowTimerModal] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Resume playback banner state
+  const [resumePrompt, setResumePrompt] = useState<{ positionSec: number; formatted: string } | null>(null);
+  const hasCheckedResumeRef = useRef(false);
+
+  // High-performance refs: eliminates React Native bridge re-renders during playback
+  const showControlsRef = useRef<boolean>(true);
+  showControlsRef.current = showControls;
+  const positionMillisRef = useRef<number>(0);
+  const lastRecordedSecRef = useRef<number>(0);
+  const lastBufferingRef = useRef<boolean>(true);
+  const lastPlayingRef = useRef<boolean>(true);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -138,8 +173,8 @@ export const PlayerScreen: React.FC = () => {
   }, [item, isSeries, currentEpisode, localOfflineFile]);
 
   const videoUrl = useMemo(() => {
-    return optimizeVideoUrl(rawVideoUrl);
-  }, [rawVideoUrl]);
+    return optimizeVideoUrl(rawVideoUrl, selectedQuality);
+  }, [rawVideoUrl, selectedQuality]);
 
   // Reset states when URL or retryKey changes
   useEffect(() => {
@@ -148,8 +183,19 @@ export const PlayerScreen: React.FC = () => {
     setHasLoaded(false);
   }, [videoUrl, retryKey]);
 
-  // Clean up orientation when leaving Player
+  // Audio session & orientation setup
   useEffect(() => {
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: true,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch(() => {});
+
+    // Unlock orientation for smooth fluid rotation (zero surface destruction jank on mount!)
+    ScreenOrientation.unlockAsync().catch(() => {});
+
     return () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -157,6 +203,36 @@ export const PlayerScreen: React.FC = () => {
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     };
   }, []);
+
+  // Check if user previously watched and prompt to resume
+  useEffect(() => {
+    if (hasCheckedResumeRef.current || !item) return;
+    hasCheckedResumeRef.current = true;
+    const historyItem = history?.find(
+      (h) => h.item.id === item.id && (!isSeries || h.episodeId === currentEpisode?.id)
+    );
+    if (historyItem && historyItem.currentTime > 15 && historyItem.currentTime < (historyItem.duration || 99999) - 30) {
+      const posSec = Math.floor(historyItem.currentTime);
+      const h = Math.floor(posSec / 3600);
+      const m = Math.floor((posSec % 3600) / 60);
+      const s = posSec % 60;
+      const formatted = h > 0 ? `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}` : `${m}:${s < 10 ? '0' : ''}${s}`;
+      setResumePrompt({ positionSec: posSec, formatted });
+      setTimeout(() => {
+        setResumePrompt(null);
+      }, 7000);
+    }
+  }, [item, isSeries, currentEpisode, history]);
+
+  const handleResume = async () => {
+    if (!resumePrompt) return;
+    const targetMs = resumePrompt.positionSec * 1000;
+    setResumePrompt(null);
+    showToastMessage(`Davom etilmoqda: ${resumePrompt.formatted}`);
+    try {
+      await videoRef.current?.setPositionAsync(targetMs);
+    } catch (e) {}
+  };
 
   // Auto-hide controls after 2.8 seconds of inactivity
   const scheduleControlsHide = useCallback(() => {
@@ -180,6 +256,8 @@ export const PlayerScreen: React.FC = () => {
     setShowControls((prev) => {
       const next = !prev;
       if (next) {
+        // Sync scrubber position state immediately when opening controls
+        setPositionMillis(positionMillisRef.current);
         scheduleControlsHide();
       } else {
         if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -199,6 +277,7 @@ export const PlayerScreen: React.FC = () => {
     const timer = setTimeout(() => {
       videoRef.current?.pauseAsync();
       setSleepTimer(null);
+      showToastMessage('Uyqu taymeri: Ijro to‘xtatildi');
     }, sleepTimer * 60 * 1000);
     return () => clearTimeout(timer);
   }, [sleepTimer]);
@@ -222,15 +301,26 @@ export const PlayerScreen: React.FC = () => {
       if (!isFullscreen) {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
         setIsFullscreen(true);
+        showToastMessage("To'liq ekran rejimi");
       } else {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         setIsFullscreen(false);
+        showToastMessage('Standart rejim');
       }
     } catch (e) {
       try {
         await videoRef.current?.presentFullscreenPlayer();
       } catch (err) {}
     }
+  };
+
+  // Toggle Mute
+  const toggleMute = async () => {
+    scheduleControlsHide();
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    await videoRef.current?.setIsMutedAsync(nextMuted);
+    showToastMessage(nextMuted ? '🔇 Ovoz o‘chirildi' : '🔊 Ovoz yoqildi');
   };
 
   // Cycle aspect ratio / resize mode
@@ -255,41 +345,79 @@ export const PlayerScreen: React.FC = () => {
     }, 2000);
   };
 
-  const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
+  const onPlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) {
       if (status.error) {
         console.warn('Playback status error:', status.error);
+        if (selectedQuality !== '1080p') {
+          setSelectedQuality('1080p');
+          showToastMessage("Asl sifatga o'tildi (1080p)");
+          return;
+        }
         setPlaybackError(status.error);
         setIsBuffering(false);
       }
       return;
     }
 
-    setHasLoaded(true);
-    setPlaybackError(null);
-    // CRITICAL: On Android ExoPlayer, status.isBuffering is true during background buffering
-    // even while the video is playing smoothly! We ONLY mark isBuffering if NOT playing.
-    setIsBuffering(status.isBuffering && !status.isPlaying);
-    setIsPlaying(status.isPlaying);
-    setPositionMillis(status.positionMillis);
-    setDurationMillis(status.durationMillis || 0);
+    if (!hasLoaded) setHasLoaded(true);
+    if (playbackError) setPlaybackError(null);
 
-    // Periodically record watch progress every 5 seconds
-    if (item && status.durationMillis && Math.floor(status.positionMillis / 1000) % 5 === 0) {
-      recordProgress(
-        item,
-        status.positionMillis / 1000,
-        status.durationMillis / 1000,
-        currentEpisode?.id,
-        currentEpisode?.title
-      );
+    const isBuff = status.isBuffering && !status.isPlaying;
+    if (isBuff !== lastBufferingRef.current) {
+      lastBufferingRef.current = isBuff;
+      setIsBuffering(isBuff);
     }
 
-    if (status.didJustFinish) {
-      if (isSeries) {
-        setCountdown(5);
+    if (status.isPlaying !== lastPlayingRef.current) {
+      lastPlayingRef.current = status.isPlaying;
+      setIsPlaying(status.isPlaying);
+    }
+
+    positionMillisRef.current = status.positionMillis;
+    // PERFORMANCE: Only trigger React state update if controls are currently open!
+    if (showControlsRef.current) {
+      setPositionMillis(status.positionMillis);
+    }
+
+    if (status.durationMillis && status.durationMillis !== durationMillis) {
+      setDurationMillis(status.durationMillis);
+    }
+
+    // Throttled history save: record ONLY once every 20 seconds to keep 60fps UI thread!
+    const currentSec = Math.floor(status.positionMillis / 1000);
+    if (currentSec > 0 && currentSec % 20 === 0 && currentSec !== lastRecordedSecRef.current) {
+      lastRecordedSecRef.current = currentSec;
+      if (item && status.durationMillis) {
+        recordProgress(
+          item,
+          currentSec,
+          status.durationMillis / 1000,
+          currentEpisode?.id,
+          currentEpisode?.title
+        );
       }
     }
+
+    if (status.didJustFinish && isSeries) {
+      setCountdown(5);
+    }
+  }, [hasLoaded, playbackError, durationMillis, item, currentEpisode, isSeries, recordProgress, selectedQuality]);
+
+  const handleQualityChange = (q: '1080p' | '720p' | '480p') => {
+    if (q === selectedQuality) {
+      setShowQualityModal(false);
+      return;
+    }
+    const currentPos = positionMillisRef.current || positionMillis;
+    setShowQualityModal(false);
+    setSelectedQuality(q);
+    showToastMessage(`Sifat: ${q} o'rnatildi`);
+    setTimeout(async () => {
+      try {
+        await videoRef.current?.setPositionAsync(currentPos);
+      } catch (e) {}
+    }, 450);
   };
 
   const togglePlayPause = async () => {
@@ -298,14 +426,16 @@ export const PlayerScreen: React.FC = () => {
       await videoRef.current?.pauseAsync();
     } else {
       await videoRef.current?.playAsync();
-      // When playing resumes, auto-hide controls quickly
       scheduleControlsHide();
     }
   };
 
   const skipTime = async (seconds: number) => {
     scheduleControlsHide();
-    const newPos = Math.max(0, Math.min(durationMillis, positionMillis + seconds * 1000));
+    const curPos = positionMillisRef.current || positionMillis;
+    const newPos = Math.max(0, Math.min(durationMillis, curPos + seconds * 1000));
+    positionMillisRef.current = newPos;
+    setPositionMillis(newPos);
     await videoRef.current?.setPositionAsync(newPos);
   };
 
@@ -347,7 +477,6 @@ export const PlayerScreen: React.FC = () => {
     const timeDelta = now - lastTapRef.current.time;
 
     if (timeDelta < 280 && Math.abs(touchX - lastTapRef.current.x) < 140) {
-      // Double tap detected -> cancel pending single tap toggle immediately
       if (singleTapTimerRef.current) {
         clearTimeout(singleTapTimerRef.current);
         singleTapTimerRef.current = null;
@@ -362,11 +491,9 @@ export const PlayerScreen: React.FC = () => {
       lastTapRef.current = { time: 0, x: 0 };
     } else {
       lastTapRef.current = { time: now, x: touchX };
-      // Cancel previous single-tap debounce if any
       if (singleTapTimerRef.current) {
         clearTimeout(singleTapTimerRef.current);
       }
-      // Single tap -> wait 260ms before toggling controls to allow double-tap interception
       singleTapTimerRef.current = setTimeout(() => {
         toggleControls();
         singleTapTimerRef.current = null;
@@ -398,6 +525,8 @@ export const PlayerScreen: React.FC = () => {
     const clickX = evt.nativeEvent.locationX;
     const ratio = Math.max(0, Math.min(1, clickX / trackWidth));
     const targetMillis = ratio * durationMillis;
+    positionMillisRef.current = targetMillis;
+    setPositionMillis(targetMillis);
     await videoRef.current?.setPositionAsync(targetMillis);
   };
 
@@ -418,8 +547,6 @@ export const PlayerScreen: React.FC = () => {
   };
 
   const progressPercent = durationMillis > 0 ? (positionMillis / durationMillis) * 100 : 0;
-
-  // Only show minimal spinner when NOT playing and genuinely buffering or uninitialized
   const showBufferingSpinner = (!hasLoaded || (isBuffering && !isPlaying)) && !playbackError;
 
   if (!item) return null;
@@ -447,10 +574,8 @@ export const PlayerScreen: React.FC = () => {
           style={styles.video}
           resizeMode={resizeMode}
           shouldPlay={true}
-          usePoster={true}
-          posterSource={{ uri: item.backdrop || item.poster }}
-          posterStyle={{ resizeMode: 'cover' }}
-          progressUpdateIntervalMillis={500}
+          isMuted={isMuted}
+          progressUpdateIntervalMillis={1000}
           rate={playbackSpeed}
           onPlaybackStatusUpdate={onPlaybackStatusUpdate}
           onLoadStart={() => {
@@ -464,20 +589,44 @@ export const PlayerScreen: React.FC = () => {
           }}
           onError={(err) => {
             console.warn('Video load error:', err);
+            if (selectedQuality !== '1080p') {
+              setSelectedQuality('1080p');
+              showToastMessage("Asl sifatga o'tildi (1080p)");
+              return;
+            }
             setPlaybackError('Video oqimini yuklab bo‘lmadi');
             setIsBuffering(false);
           }}
         />
       </TouchableOpacity>
 
-      {/* Minimal, Completely Non-Obtrusive Transparent Buffering Spinner (NO CARDS, NO BLOCKING TEXT) */}
+      {/* Minimal, Completely Non-Obtrusive Transparent Buffering Spinner */}
       {showBufferingSpinner && (
         <View style={styles.bufferingOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color="#e50914" />
+          <ActivityIndicator size="large" color="#00f2fe" />
         </View>
       )}
 
-      {/* Real Error Recovery Card (Only shown if playback actually fails) */}
+      {/* Resume Playback Floating Banner */}
+      {resumePrompt && (
+        <View style={styles.resumeBannerContainer} pointerEvents="box-none">
+          <View style={styles.resumeBannerCard}>
+            <Ionicons name="time" size={18} color="#00f2fe" />
+            <Text style={styles.resumeBannerText}>
+              {resumePrompt.formatted} da to'xtatilgan
+            </Text>
+            <TouchableOpacity style={styles.resumeActionBtn} onPress={handleResume}>
+              <Ionicons name="play" size={14} color="#070a12" />
+              <Text style={styles.resumeActionText}>Davom etish</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.resumeCloseBtn} onPress={() => setResumePrompt(null)}>
+              <Ionicons name="close" size={16} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Error Recovery Card */}
       {playbackError && (
         <View style={styles.errorOverlay} pointerEvents="box-none">
           <View style={styles.errorCard}>
@@ -562,7 +711,7 @@ export const PlayerScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Pure Cinema Player HUD Controls Overlay (Center is completely transparent!) */}
+      {/* Pure Cinema Player HUD Controls Overlay */}
       {showControls && !isLocked && (
         <View style={styles.hudOverlay} pointerEvents="box-none">
           {/* Top Bar with gentle gradient backdrop */}
@@ -673,11 +822,32 @@ export const PlayerScreen: React.FC = () => {
             <View style={styles.toolsRow}>
               <View style={styles.toolsLeft}>
                 <TouchableOpacity
+                  style={[styles.toolBtn, { borderColor: 'rgba(0, 242, 254, 0.35)' }]}
+                  onPress={() => setShowQualityModal(true)}
+                >
+                  <Ionicons name="sparkles-outline" size={15} color="#00f2fe" />
+                  <Text style={[styles.toolBtnText, { color: '#00f2fe', fontWeight: '800' }]}>
+                    {selectedQuality.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   style={styles.toolBtn}
                   onPress={() => setShowSpeedModal(true)}
                 >
                   <Ionicons name="speedometer-outline" size={15} color="#cbd5e1" />
                   <Text style={styles.toolBtnText}>{playbackSpeed}x</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.toolBtn} onPress={toggleMute}>
+                  <Ionicons
+                    name={isMuted ? 'volume-mute' : 'volume-high-outline'}
+                    size={15}
+                    color={isMuted ? '#ef4444' : '#cbd5e1'}
+                  />
+                  <Text style={[styles.toolBtnText, isMuted && { color: '#ef4444' }]}>
+                    {isMuted ? "Ovoz o'chiq" : 'Ovoz'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -736,6 +906,49 @@ export const PlayerScreen: React.FC = () => {
           </View>
         </View>
       )}
+
+      {/* Quality Modal */}
+      <Modal visible={showQualityModal} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowQualityModal(false)}
+        >
+          <View style={styles.compactModalContent}>
+            <Text style={styles.modalSheetTitle}>Video Sifati (Oqim)</Text>
+            <View style={styles.qualityListWrap}>
+              {QUALITY_OPTIONS.map((q) => {
+                const isActive = selectedQuality === q.value;
+                return (
+                  <TouchableOpacity
+                    key={q.value}
+                    style={[styles.qualityOptionCard, isActive && styles.activeQualityCard]}
+                    onPress={() => handleQualityChange(q.value)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.qualityLeftRow}>
+                      <Ionicons
+                        name={q.icon}
+                        size={20}
+                        color={isActive ? '#00f2fe' : '#94a3b8'}
+                      />
+                      <View style={{ marginLeft: 12 }}>
+                        <Text style={[styles.qualityLabel, isActive && styles.activeQualityLabel]}>
+                          {q.label}
+                        </Text>
+                        <Text style={styles.qualityDesc}>{q.desc}</Text>
+                      </View>
+                    </View>
+                    {isActive && (
+                      <Ionicons name="checkmark-circle" size={22} color="#00f2fe" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Speed Modal */}
       <Modal visible={showSpeedModal} transparent animationType="fade">
@@ -906,6 +1119,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
     backgroundColor: 'transparent',
+  },
+  resumeBannerContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    zIndex: 80,
+  },
+  resumeBannerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 20, 34, 0.95)',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 242, 254, 0.4)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 8,
+    gap: 10,
+  },
+  resumeBannerText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  resumeActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#00f2fe',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  resumeActionText: {
+    color: '#070a12',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  resumeCloseBtn: {
+    padding: 2,
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1451,5 +1710,41 @@ const styles = StyleSheet.create({
   modalEpDuration: {
     color: '#64748b',
     fontSize: 11,
+  },
+  qualityListWrap: {
+    gap: 10,
+    marginBottom: 10,
+  },
+  qualityOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#0f1422',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  activeQualityCard: {
+    borderColor: '#00f2fe',
+    backgroundColor: 'rgba(0, 242, 254, 0.12)',
+  },
+  qualityLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  qualityLabel: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  activeQualityLabel: {
+    color: '#ffffff',
+  },
+  qualityDesc: {
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 2,
   },
 });
