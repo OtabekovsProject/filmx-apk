@@ -138,7 +138,14 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid', 
 };
 
 export const MediaCard = React.memo(MediaCardComponent, (prev, next) => {
-  return prev.item.id === next.item.id && prev.variant === next.variant && prev.isFav === next.isFav;
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.title === next.item.title &&
+    prev.item.poster === next.item.poster &&
+    prev.item.rating === next.item.rating &&
+    prev.variant === next.variant &&
+    prev.isFav === next.isFav
+  );
 });
 
 const cardWidth = (width - 44) / 2;

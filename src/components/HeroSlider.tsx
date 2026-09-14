@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,28 +12,37 @@ interface HeroSliderProps {
   items: MediaItem[];
 }
 
-export const HeroSlider: React.FC<HeroSliderProps> = ({ items }) => {
+const HeroSliderComponent: React.FC<HeroSliderProps> = ({ items }) => {
   const navigation = useNavigation<any>();
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    if (items.length <= 1) return;
-    const timer = setInterval(() => {
+  const startTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (!items || items.length <= 1) return;
+    timerRef.current = setInterval(() => {
       setActiveIndex((prev) => {
         const next = (prev + 1) % items.length;
         scrollRef.current?.scrollTo({ x: next * width, animated: true });
         return next;
       });
     }, 6000);
-    return () => clearInterval(timer);
-  }, [items.length]);
+  }, [items]);
+
+  useEffect(() => {
+    startTimer();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [startTimer]);
 
   const handleScroll = (e: any) => {
     const x = e.nativeEvent.contentOffset.x;
     const index = Math.round(x / width);
-    if (index !== activeIndex && index >= 0 && index < items.length) {
+    if (index !== activeIndex && index >= 0 && items && index < items.length) {
       setActiveIndex(index);
+      startTimer();
     }
   };
 
@@ -54,7 +63,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({ items }) => {
 
           return (
             <View key={item.id} style={styles.slide}>
-              <Image source={{ uri: bgImage }} style={styles.bgImage} resizeMode="cover" />
+              <Image source={{ uri: bgImage }} style={styles.bgImage} resizeMode="cover" fadeDuration={0} />
               <LinearGradient
                 colors={['transparent', 'rgba(7, 10, 18, 0.7)', '#070a12']}
                 style={styles.gradient}
@@ -125,6 +134,8 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({ items }) => {
     </View>
   );
 };
+
+export const HeroSlider = React.memo(HeroSliderComponent);
 
 const styles = StyleSheet.create({
   container: {

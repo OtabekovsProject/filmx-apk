@@ -12,7 +12,7 @@ interface FilterBarProps {
   onSelect: (value: string) => void;
 }
 
-export const FilterBar: React.FC<FilterBarProps> = ({ items, selectedValue, onSelect }) => {
+const FilterBarComponent: React.FC<FilterBarProps> = ({ items, selectedValue, onSelect }) => {
   return (
     <ScrollView
       horizontal
@@ -37,6 +37,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({ items, selectedValue, onSe
     </ScrollView>
   );
 };
+
+export const FilterBar = React.memo(FilterBarComponent);
 
 const styles = StyleSheet.create({
   scroll: {

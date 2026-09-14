@@ -29,7 +29,19 @@ export const DetailScreen: React.FC = () => {
   const related = useMemo(() => {
     if (!item) return [];
     const pool = isSeries ? getSeries() : getMovies();
-    return pool.filter((m) => m.id !== item.id).slice(0, 6);
+    const itemGenres = new Set((item.genres || []).map(g => g.toLowerCase()));
+    
+    // Smart matching: sort by genre overlap, then by rating
+    return pool
+      .filter((m) => m.id !== item.id)
+      .map((m) => {
+        const mGenres = (m.genres || []).map(g => g.toLowerCase());
+        const overlap = mGenres.filter(g => itemGenres.has(g)).length;
+        return { item: m, score: overlap * 10 + (m.rating || 0) };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(x => x.item);
   }, [item, isSeries]);
 
   if (!item) {
@@ -49,7 +61,7 @@ export const DetailScreen: React.FC = () => {
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Backdrop Banner */}
         <View style={styles.backdropWrap}>
-          <Image source={{ uri: bgImage }} style={styles.backdrop} resizeMode="cover" />
+          <Image source={{ uri: bgImage }} style={styles.backdrop} resizeMode="cover" fadeDuration={0} />
           <LinearGradient
             colors={['rgba(7, 10, 18, 0.4)', 'rgba(7, 10, 18, 0.85)', '#070a12']}
             style={styles.gradient}

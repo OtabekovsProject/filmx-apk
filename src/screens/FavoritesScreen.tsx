@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,7 +37,15 @@ export const FavoritesScreen: React.FC = () => {
     }
   };
 
-  const renderDownloadCard = ({ item }: { item: DownloadItem }) => {
+  const renderFavoriteItem = useCallback(
+    ({ item }: { item: any }) => <MediaCard item={item} variant="grid" isFav={true} />,
+    []
+  );
+
+  const favoriteKeyExtractor = useCallback((item: any) => item.id, []);
+  const downloadKeyExtractor = useCallback((item: DownloadItem) => item.id, []);
+
+  const renderDownloadCard = useCallback(({ item }: { item: DownloadItem }) => {
     const isGallery = item.target === 'gallery';
     const isDownloading = item.status === 'downloading';
 
@@ -115,7 +123,7 @@ export const FavoritesScreen: React.FC = () => {
         </View>
       </View>
     );
-  };
+  }, [navigation, removeDownload]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -187,11 +195,15 @@ export const FavoritesScreen: React.FC = () => {
         ) : (
           <FlatList
             data={favorites}
-            keyExtractor={(item) => item.id}
+            keyExtractor={favoriteKeyExtractor}
             numColumns={2}
             columnWrapperStyle={styles.columnWrapper}
             contentContainerStyle={styles.listContent}
-            renderItem={({ item }) => <MediaCard item={item} variant="grid" isFav={true} />}
+            renderItem={renderFavoriteItem}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            initialNumToRender={8}
           />
         )
       ) : (
@@ -250,9 +262,12 @@ export const FavoritesScreen: React.FC = () => {
           ) : (
             <FlatList
               data={filteredDownloads}
-              keyExtractor={(item) => item.id}
+              keyExtractor={downloadKeyExtractor}
               contentContainerStyle={styles.downloadListContent}
               renderItem={renderDownloadCard}
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={5}
+              windowSize={5}
             />
           )}
         </View>

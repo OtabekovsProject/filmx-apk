@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   FlatList,
   Dimensions,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +16,7 @@ import { useRoute } from "@react-navigation/native";
 import { MediaCard } from "../components/MediaCard";
 import { FilterBar } from "../components/FilterBar";
 import { filterMedia, getDataStats } from "../services/dataService";
+import { searchAndRank } from "../services/searchUtils";
 import { MediaItem } from "../types";
 import { useApp } from "../context/AppContext";
 
@@ -68,6 +70,7 @@ export const CatalogScreen: React.FC = () => {
   const initialSort = route.params?.sort || "newest";
 
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [type, setType] = useState(initialType);
   const [genre, setGenre] = useState(initialGenre);
   const [country, setCountry] = useState("all");
@@ -75,6 +78,17 @@ export const CatalogScreen: React.FC = () => {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [visibleCount, setVisibleCount] = useState(24);
   const [refreshing, setRefreshing] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced search: 300ms delay to avoid filtering 1500+ items on every keystroke
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(query);
+      setVisibleCount(24); // Reset pagination on new search
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
 
   const stats = useMemo(() => getDataStats(), [dataVersion]);
 
@@ -88,24 +102,34 @@ export const CatalogScreen: React.FC = () => {
   }, [syncData]);
 
   const filteredItems = useMemo(() => {
+    const hasQuery = debouncedQuery.trim().length > 0;
+    if (hasQuery) {
+      // Smart search with relevance scoring
+      const pool = filterMedia({
+        type: type as any,
+        genre,
+        country,
+      });
+      return searchAndRank(pool, debouncedQuery, 200);
+    }
     return filterMedia({
-      query,
       type: type as any,
       genre,
       country,
       sortBy: sort as any,
     });
-  }, [query, type, genre, country, sort, dataVersion]);
+  }, [debouncedQuery, type, genre, country, sort, dataVersion]);
 
   const displayedItems = useMemo(() => {
     return filteredItems.slice(0, visibleCount);
   }, [filteredItems, visibleCount]);
 
-  const handleLoadMore = () => {
+  // Infinite scroll: auto-load more when user reaches bottom
+  const handleEndReached = useCallback(() => {
     if (visibleCount < filteredItems.length) {
-      setVisibleCount((prev) => prev + 24);
+      setVisibleCount((prev) => Math.min(prev + 24, filteredItems.length));
     }
-  };
+  }, [visibleCount, filteredItems.length]);
 
   const renderHeader = useCallback(
     () => (
@@ -183,15 +207,23 @@ export const CatalogScreen: React.FC = () => {
     [query, type, genre, country, sort, viewMode, filteredItems.length, stats.totalCount]
   );
 
+  const renderItem = useCallback(
+    ({ item }: { item: MediaItem }) => (
+      <MediaCard item={item} variant={viewMode === "grid" ? "grid" : "list"} />
+    ),
+    [viewMode]
+  );
+
+  const keyExtractor = useCallback((item: MediaItem) => item.id, []);
+
   const renderFooter = useCallback(() => {
     if (visibleCount >= filteredItems.length) return <View style={{ height: 40 }} />;
     return (
       <View style={styles.footerWrap}>
-        <TouchableOpacity style={styles.loadMoreBtn} onPress={handleLoadMore}>
-          <Text style={styles.loadMoreText}>
-            Yana 24 tasini yuklash ({visibleCount} / {filteredItems.length})
-          </Text>
-        </TouchableOpacity>
+        <ActivityIndicator size="small" color="#e50914" style={{ marginVertical: 16 }} />
+        <Text style={styles.loadMoreText}>
+          {visibleCount} / {filteredItems.length} ko'rsatilmoqda
+        </Text>
         <View style={{ height: 40 }} />
       </View>
     );
@@ -202,15 +234,13 @@ export const CatalogScreen: React.FC = () => {
       <FlatList
         key={viewMode}
         data={displayedItems}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
         numColumns={viewMode === "grid" ? 2 : 1}
         columnWrapperStyle={viewMode === "grid" ? styles.columnWrapper : undefined}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
-        renderItem={({ item }) => (
-          <MediaCard item={item} variant={viewMode === "grid" ? "grid" : "list"} />
-        )}
+        renderItem={renderItem}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -219,6 +249,8 @@ export const CatalogScreen: React.FC = () => {
             colors={["#e50914", "#00f2fe"]}
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.4}
         initialNumToRender={10}
         maxToRenderPerBatch={8}
         windowSize={5}
