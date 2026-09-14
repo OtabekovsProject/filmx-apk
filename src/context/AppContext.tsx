@@ -188,14 +188,11 @@ export const AppProvider: React.FC<{
 
   const checkUpdates = async () => {
     try {
-      const info = await checkAppUpdate(APP_VERSION);
-      if (info && info.hasUpdate) {
-        setUpdateInfo(info);
-        // ONLY prompt for APK reinstallation if it is a true native binary upgrade!
-        // Content updates are already seamlessly handled by syncRemoteMediaData.
-        if (info.isNativeUpgrade) {
-          setShowUpdateModal(true);
-        }
+      // NEVER trigger 65MB full APK reinstallation modal!
+      // Instead, perform lightweight OTA delta sync (3-5MB only changed movies/features)
+      const res = await syncRemoteMediaData();
+      if (res.updated && res.newItemsCount > 0) {
+        restartApp(`⚡ +${res.newItemsCount} ta yangi kino va funksiyalar yangilandi!`);
       }
     } catch (e) {}
   };

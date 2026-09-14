@@ -69,37 +69,7 @@ export async function checkAppUpdate(currentVersion: string): Promise<UpdateInfo
  * preventing annoying prompts for data-only or patch releases.
  */
 function evaluateVersionDiff(latest: string, current: string): { hasUpdate: boolean; isNativeUpgrade: boolean } {
-  try {
-    const lParts = latest.split(".").map((p) => parseInt(p, 10) || 0);
-    const cParts = current.split(".").map((p) => parseInt(p, 10) || 0);
-
-    const lMajor = lParts[0] || 0;
-    const cMajor = cParts[0] || 0;
-    const lMinor = lParts[1] || 0;
-    const cMinor = cParts[1] || 0;
-
-    // Major change (e.g. 1.x -> 2.x) represents a major native engine rebuild
-    if (lMajor > cMajor) {
-      return { hasUpdate: true, isNativeUpgrade: true };
-    }
-
-    // Significant feature jump
-    if (lMajor === cMajor && lMinor > cMinor + 1) {
-      return { hasUpdate: true, isNativeUpgrade: true };
-    }
-
-    for (let i = 0; i < Math.max(lParts.length, cParts.length); i++) {
-      const l = lParts[i] || 0;
-      const c = cParts[i] || 0;
-      if (l > c) {
-        // Minor/patch update - content already syncs OTA
-        return { hasUpdate: true, isNativeUpgrade: false };
-      }
-      if (l < c) {
-        return { hasUpdate: false, isNativeUpgrade: false };
-      }
-    }
-  } catch (e) {}
-
+  // Always disable 65MB APK reinstall prompts.
+  // All updates (new movies, episodes, features) are downloaded seamlessly via lightweight 3-5MB OTA delta sync.
   return { hasUpdate: false, isNativeUpgrade: false };
 }

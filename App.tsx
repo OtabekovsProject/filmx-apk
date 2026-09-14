@@ -150,12 +150,14 @@ function AppContent() {
       {/* Global Realtime Internet Connectivity Banner */}
       <NetworkBanner isOffline={isOffline} isRestored={isRestored} />
 
-      {/* In-App GitHub Auto-Update Modal with Direct Downloader (Only for Major Engine Upgrades) */}
-      <UpdateModal
-        visible={showUpdateModal}
-        updateInfo={updateInfo}
-        onClose={() => setShowUpdateModal(false)}
-      />
+      {/* 65MB Full APK reinstallation modal disabled. All updates are handled seamlessly via 3-5MB lightweight in-app delta sync. */}
+      {false && (
+        <UpdateModal
+          visible={showUpdateModal}
+          updateInfo={updateInfo}
+          onClose={() => setShowUpdateModal(false)}
+        />
+      )}
     </View>
   );
 }
