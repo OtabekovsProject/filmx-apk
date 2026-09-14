@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { MediaCard } from '../components/MediaCard';
 import { filterMedia, getFeaturedMedia } from '../services/dataService';
+import { searchAndRank } from '../services/searchUtils';
 import { MediaItem } from '../types';
 
 const { width } = Dimensions.get('window');
@@ -34,16 +35,16 @@ const QUICK_CATEGORIES = [
 ];
 
 const POPULAR_SEARCHES = [
-  'Jangari',
-  "Taxtlar O'yini",
-  'Forsaj',
-  'Interstellar',
-  'Singam 3',
-  'Avatar',
   'Garri Potter',
-  'Qonxo\'r Itlar',
+  'Qasoskorlar',
+  'Forsaj',
+  'Avatar',
+  'Taksi',
+  'Jangari',
   'Multfilm',
-  'Koreys serial',
+  'Dorama',
+  'Komediya',
+  'Fantastika',
 ];
 
 export const SearchScreen: React.FC = () => {
@@ -110,7 +111,7 @@ export const SearchScreen: React.FC = () => {
 
   const activeCategory = QUICK_CATEGORIES[activeCategoryIdx];
 
-  // Filter media based on query and selected category
+  // Smart search: uses scoring engine when query is present, category filter otherwise
   const results = useMemo(() => {
     const hasQuery = debouncedQuery.trim().length > 0;
     const isFiltered = activeCategoryIdx > 0;
@@ -119,8 +120,18 @@ export const SearchScreen: React.FC = () => {
       return [];
     }
 
+    // When there's a text query: use smart searchAndRank for relevance scoring
+    if (hasQuery) {
+      const pool = filterMedia({
+        type: activeCategory.type as any,
+        genre: activeCategory.genre !== 'all' ? activeCategory.genre : undefined,
+        year: activeCategory.year,
+      });
+      return searchAndRank(pool, debouncedQuery, 80);
+    }
+
+    // Category-only filter (no text)
     return filterMedia({
-      query: hasQuery ? debouncedQuery : undefined,
       type: activeCategory.type as any,
       genre: activeCategory.genre !== 'all' ? activeCategory.genre : undefined,
       year: activeCategory.year,
@@ -128,6 +139,7 @@ export const SearchScreen: React.FC = () => {
   }, [debouncedQuery, activeCategory, activeCategoryIdx]);
 
   const featured = useMemo(() => getFeaturedMedia().slice(0, 6), []);
+
 
   const handleSelectSuggestion = (text: string) => {
     setQuery(text);

@@ -1,3 +1,4 @@
+import { calculateSearchScore } from "./searchUtils";
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Movie, Series, MediaItem } from "../types";
@@ -483,14 +484,8 @@ export function filterMedia(options: FilterOptions): MediaItem[] {
 
     // Query filter
     if (options.query && options.query.trim()) {
-      const q = options.query.toLowerCase().trim();
-      const titleMatch = item.title?.toLowerCase().includes(q);
-      const actorMatch = item.actors?.some((a) => a.toLowerCase().includes(q));
-      const genreMatch = item.genres?.some((g) => g.toLowerCase().includes(q));
-      const countryMatch = item.country?.toLowerCase().includes(q);
-      if (!titleMatch && !actorMatch && !genreMatch && !countryMatch) {
-        return false;
-      }
+      const score = calculateSearchScore(item, options.query);
+      if (score <= 0) return false;
     }
 
     return true;
@@ -499,6 +494,11 @@ export function filterMedia(options: FilterOptions): MediaItem[] {
   // Sort
   const sort = options.sortBy || "newest";
   return result.sort((a, b) => {
+    if (options.query && options.query.trim()) {
+      const scoreA = calculateSearchScore(a, options.query);
+      const scoreB = calculateSearchScore(b, options.query);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+    }
     if (sort === "newest") {
       return b.year - a.year || (b.rating || 0) - (a.rating || 0);
     }
