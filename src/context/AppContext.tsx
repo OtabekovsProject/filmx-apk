@@ -136,11 +136,26 @@ export const AppProvider: React.FC<{
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3500);
-      await fetch("https://raw.githubusercontent.com/favicon.ico", {
-        method: "HEAD",
-        signal: controller.signal,
-      });
+
+      let reachable = false;
+      try {
+        const res = await fetch("https://filmx-series.vercel.app/favicon.ico", {
+          method: "HEAD",
+          signal: controller.signal,
+        });
+        if (res.ok || res.status < 500) reachable = true;
+      } catch {
+        try {
+          const res2 = await fetch("https://clients3.google.com/generate_204", {
+            method: "GET",
+            signal: controller.signal,
+          });
+          if (res2.status === 204 || res2.ok) reachable = true;
+        } catch {}
+      }
       clearTimeout(timeoutId);
+
+      if (!reachable) throw new Error("Unreachable");
 
       if (wasOfflineRef.current) {
         wasOfflineRef.current = false;

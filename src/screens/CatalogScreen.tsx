@@ -131,8 +131,31 @@ export const CatalogScreen: React.FC = () => {
     }
   }, [visibleCount, filteredItems.length]);
 
-  const renderHeader = useCallback(
-    () => (
+  const renderItem = useCallback(
+    ({ item }: { item: MediaItem }) => (
+      <MediaCard item={item} variant={viewMode === "grid" ? "grid" : "list"} />
+    ),
+    [viewMode]
+  );
+
+  const keyExtractor = useCallback((item: MediaItem) => item.id, []);
+
+  const renderFooter = useCallback(() => {
+    if (visibleCount >= filteredItems.length) return <View style={{ height: 40 }} />;
+    return (
+      <View style={styles.footerWrap}>
+        <ActivityIndicator size="small" color="#e50914" style={{ marginVertical: 16 }} />
+        <Text style={styles.loadMoreText}>
+          {visibleCount} / {filteredItems.length} ko'rsatilmoqda
+        </Text>
+        <View style={{ height: 40 }} />
+      </View>
+    );
+  }, [visibleCount, filteredItems.length]);
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      {/* Stable Header Area: Prevents keyboard lag & focus drop */}
       <View style={styles.headerArea}>
         <Text style={styles.pageTitle}>FilmX Katalogi</Text>
         <Text style={styles.pageSubtitle}>
@@ -144,13 +167,15 @@ export const CatalogScreen: React.FC = () => {
           <Ionicons name="search" size={18} color="#94a3b8" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Nomi, janri yoki aktyori bo\x27yicha..."
+            placeholder="Nomi, janri yoki aktyori bo'yicha..."
             placeholderTextColor="#64748b"
             value={query}
             onChangeText={setQuery}
+            autoCorrect={false}
+            returnKeyType="search"
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery("")}>
+            <TouchableOpacity onPress={() => setQuery("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close-circle" size={18} color="#94a3b8" />
             </TouchableOpacity>
           )}
@@ -203,34 +228,8 @@ export const CatalogScreen: React.FC = () => {
           </View>
         </View>
       </View>
-    ),
-    [query, type, genre, country, sort, viewMode, filteredItems.length, stats.totalCount]
-  );
 
-  const renderItem = useCallback(
-    ({ item }: { item: MediaItem }) => (
-      <MediaCard item={item} variant={viewMode === "grid" ? "grid" : "list"} />
-    ),
-    [viewMode]
-  );
-
-  const keyExtractor = useCallback((item: MediaItem) => item.id, []);
-
-  const renderFooter = useCallback(() => {
-    if (visibleCount >= filteredItems.length) return <View style={{ height: 40 }} />;
-    return (
-      <View style={styles.footerWrap}>
-        <ActivityIndicator size="small" color="#e50914" style={{ marginVertical: 16 }} />
-        <Text style={styles.loadMoreText}>
-          {visibleCount} / {filteredItems.length} ko'rsatilmoqda
-        </Text>
-        <View style={{ height: 40 }} />
-      </View>
-    );
-  }, [visibleCount, filteredItems.length]);
-
-  return (
-    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      {/* Media FlatList */}
       <FlatList
         key={viewMode}
         data={displayedItems}
@@ -238,7 +237,6 @@ export const CatalogScreen: React.FC = () => {
         numColumns={viewMode === "grid" ? 2 : 1}
         columnWrapperStyle={viewMode === "grid" ? styles.columnWrapper : undefined}
         contentContainerStyle={styles.listContent}
-        ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         renderItem={renderItem}
         refreshControl={
@@ -255,6 +253,7 @@ export const CatalogScreen: React.FC = () => {
         maxToRenderPerBatch={8}
         windowSize={5}
         removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
       />
     </SafeAreaView>
   );

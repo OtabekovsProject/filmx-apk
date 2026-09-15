@@ -17,6 +17,11 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid', 
   const navigation = useNavigation<any>();
   const { isFavorite, toggleFavorite } = useApp();
   const favorite = isFav !== undefined ? isFav : isFavorite(item.id);
+  const [imgUri, setImgUri] = React.useState(item.poster);
+
+  React.useEffect(() => {
+    setImgUri(item.poster);
+  }, [item.poster]);
 
   const handlePress = React.useCallback(() => {
     navigation.navigate('Detail', { id: item.id });
@@ -32,10 +37,13 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid', 
         activeOpacity={0.8}
       >
         <Image
-          source={{ uri: item.poster }}
+          source={{ uri: imgUri }}
           style={styles.listPoster}
           resizeMode="cover"
           fadeDuration={0}
+          onError={() => {
+            setImgUri('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&auto=format&fit=crop');
+          }}
         />
         <View style={styles.listContent}>
           <View style={styles.badgeRow}>
@@ -88,10 +96,13 @@ const MediaCardComponent: React.FC<MediaCardProps> = ({ item, variant = 'grid', 
     >
       <View style={styles.posterWrapper}>
         <Image
-          source={{ uri: item.poster }}
+          source={{ uri: imgUri }}
           style={posterStyle}
           resizeMode="cover"
           fadeDuration={0}
+          onError={() => {
+            setImgUri('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&auto=format&fit=crop');
+          }}
         />
         <View style={styles.posterOverlay}>
           <View style={styles.topBadges}>

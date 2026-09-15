@@ -31,14 +31,21 @@ export const DetailScreen: React.FC = () => {
     const pool = isSeries ? getSeries() : getMovies();
     const itemGenres = new Set((item.genres || []).map(g => g.toLowerCase()));
     
-    // Smart matching: sort by genre overlap, then by rating
-    return pool
-      .filter((m) => m.id !== item.id)
-      .map((m) => {
-        const mGenres = (m.genres || []).map(g => g.toLowerCase());
-        const overlap = mGenres.filter(g => itemGenres.has(g)).length;
-        return { item: m, score: overlap * 10 + (m.rating || 0) };
-      })
+    // Smart fast matching: single-pass with early bounds
+    const matches: Array<{ item: (typeof pool)[0]; score: number }> = [];
+    for (let i = 0; i < pool.length; i++) {
+      const m = pool[i];
+      if (m.id === item.id) continue;
+      const mGenres = m.genres || [];
+      let overlap = 0;
+      for (let j = 0; j < mGenres.length; j++) {
+        if (itemGenres.has(mGenres[j].toLowerCase())) overlap++;
+      }
+      if (overlap > 0 || matches.length < 24) {
+        matches.push({ item: m, score: overlap * 10 + (m.rating || 0) });
+      }
+    }
+    return matches
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(x => x.item);

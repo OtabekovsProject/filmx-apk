@@ -24,16 +24,16 @@ let cachedSeries: Series[] = [];
 let cachedAll: MediaItem[] = [];
 let mediaMap = new Map<string, MediaItem>();
 
-// Pre-computed collections for instant 60fps rendering without jank
-let cachedFeatured: MediaItem[] = [];
-let cachedMultfilms: MediaItem[] = [];
-let cachedDoramas: MediaItem[] = [];
-let cachedPremieres: MediaItem[] = [];
-let cachedTopRated: MediaItem[] = [];
-let cachedTrendingSeries: Series[] = [];
-let cachedLatestMovies: Movie[] = [];
-let cachedHind: MediaItem[] = [];
-let cachedThrillers: MediaItem[] = [];
+// Pre-computed collections for instant 60fps rendering without jank (computed lazily on demand)
+let cachedFeatured: MediaItem[] | null = null;
+let cachedMultfilms: MediaItem[] | null = null;
+let cachedDoramas: MediaItem[] | null = null;
+let cachedPremieres: MediaItem[] | null = null;
+let cachedTopRated: MediaItem[] | null = null;
+let cachedTrendingSeries: Series[] | null = null;
+let cachedLatestMovies: Movie[] | null = null;
+let cachedHind: MediaItem[] | null = null;
+let cachedThrillers: MediaItem[] | null = null;
 let lastSyncTimestamp = 0;
 
 // Subscribers for real-time live in-app data updates
@@ -113,55 +113,16 @@ function reindexCollections(movies: Movie[], series: Series[]) {
     mediaMap.set(item.id, item);
   });
 
-  // Pre-calculate all sections once to ensure 0ms render times
-  cachedTrendingSeries = cachedSeries.slice(0, 14);
-  cachedLatestMovies = cachedMovies.slice(0, 16);
-
-  cachedFeatured = cachedAll.filter((item) => (item.rating || 0) >= 8.5).slice(0, 10);
-
-  cachedTopRated = [...cachedAll]
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-    .slice(0, 14);
-
-  cachedMultfilms = cachedAll
-    .filter(
-      (item) =>
-        item.genres?.some((g) => {
-          const lg = g.toLowerCase();
-          return lg.includes("mult") || lg.includes("anim") || lg.includes("anime");
-        }) ||
-        item.title.toLowerCase().includes("multfilm") ||
-        item.title.toLowerCase().includes("anime")
-    )
-    .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
-    .slice(0, 14);
-
-  cachedDoramas = cachedAll
-    .filter(
-      (item) =>
-        item.genres?.some((g) => g.toLowerCase().includes("dorama") || g.toLowerCase().includes("koreys")) ||
-        (item.type === "series" && item.country?.toLowerCase().includes("koreya")) ||
-        item.title.toLowerCase().includes("dorama")
-    )
-    .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
-    .slice(0, 14);
-
-  cachedPremieres = cachedAll
-    .filter((item) => item.year >= 2024)
-    .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
-    .slice(0, 14);
-
-  cachedHind = cachedMovies
-    .filter(
-      (m) =>
-        m.country?.toLowerCase().includes("hind") ||
-        m.genres?.some((g) => g.toLowerCase().includes("hind"))
-    )
-    .slice(0, 12);
-
-  cachedThrillers = cachedAll
-    .filter((m) => m.genres?.some((g) => g.toLowerCase().includes("triller")))
-    .slice(0, 12);
+  // Reset lazy section caches to derive on-demand without blocking JS startup thread
+  cachedTrendingSeries = null;
+  cachedLatestMovies = null;
+  cachedFeatured = null;
+  cachedTopRated = null;
+  cachedMultfilms = null;
+  cachedDoramas = null;
+  cachedPremieres = null;
+  cachedHind = null;
+  cachedThrillers = null;
 }
 
 // Initial synchronous load for instant 0ms app start
@@ -370,46 +331,105 @@ export function getMediaById(id: string): MediaItem | undefined {
 
 export function getFeaturedMedia(): MediaItem[] {
   initData();
+  if (!cachedFeatured) {
+    cachedFeatured = cachedAll.filter((item) => (item.rating || 0) >= 8.5).slice(0, 10);
+  }
   return cachedFeatured;
 }
 
 export function getMultfilms(): MediaItem[] {
   initData();
+  if (!cachedMultfilms) {
+    cachedMultfilms = cachedAll
+      .filter(
+        (item) =>
+          item.genres?.some((g) => {
+            const lg = g.toLowerCase();
+            return lg.includes("mult") || lg.includes("anim") || lg.includes("anime");
+          }) ||
+          item.title.toLowerCase().includes("multfilm") ||
+          item.title.toLowerCase().includes("anime")
+      )
+      .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
+      .slice(0, 14);
+  }
   return cachedMultfilms;
 }
 
 export function getDoramas(): MediaItem[] {
   initData();
+  if (!cachedDoramas) {
+    cachedDoramas = cachedAll
+      .filter(
+        (item) =>
+          item.genres?.some((g) => g.toLowerCase().includes("dorama") || g.toLowerCase().includes("koreys")) ||
+          (item.type === "series" && item.country?.toLowerCase().includes("koreya")) ||
+          item.title.toLowerCase().includes("dorama")
+      )
+      .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
+      .slice(0, 14);
+  }
   return cachedDoramas;
 }
 
 export function getLatestPremieres(): MediaItem[] {
   initData();
+  if (!cachedPremieres) {
+    cachedPremieres = cachedAll
+      .filter((item) => item.year >= 2024)
+      .sort((a, b) => b.year - a.year || (b.rating || 0) - (a.rating || 0))
+      .slice(0, 14);
+  }
   return cachedPremieres;
 }
 
 export function getTopRatedMedia(): MediaItem[] {
   initData();
+  if (!cachedTopRated) {
+    cachedTopRated = [...cachedAll]
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 14);
+  }
   return cachedTopRated;
 }
 
 export function getTrendingSeries(): Series[] {
   initData();
+  if (!cachedTrendingSeries) {
+    cachedTrendingSeries = cachedSeries.slice(0, 14);
+  }
   return cachedTrendingSeries;
 }
 
 export function getLatestMovies(): Movie[] {
   initData();
+  if (!cachedLatestMovies) {
+    cachedLatestMovies = cachedMovies.slice(0, 16);
+  }
   return cachedLatestMovies;
 }
 
 export function getHindMovies(): MediaItem[] {
   initData();
+  if (!cachedHind) {
+    cachedHind = cachedMovies
+      .filter(
+        (m) =>
+          m.country?.toLowerCase().includes("hind") ||
+          m.genres?.some((g) => g.toLowerCase().includes("hind"))
+      )
+      .slice(0, 12);
+  }
   return cachedHind;
 }
 
 export function getThrillers(): MediaItem[] {
   initData();
+  if (!cachedThrillers) {
+    cachedThrillers = cachedAll
+      .filter((m) => m.genres?.some((g) => g.toLowerCase().includes("triller")))
+      .slice(0, 12);
+  }
   return cachedThrillers;
 }
 
