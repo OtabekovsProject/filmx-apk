@@ -17,7 +17,7 @@ import {
   generateDownloadId,
 } from "../services/downloadService";
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.1";
 
 interface AppContextType {
   favorites: MediaItem[];
